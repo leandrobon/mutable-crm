@@ -128,3 +128,14 @@ the tools.
 
 v1 (later, if v0 works): undo using the reverses, drop column with explicit
 confirmation, relations between entities, a real CRM seed (contacts, deals, notes).
+
+Two notes for whoever starts v1:
+
+- **Undo is already scaffolded at the data layer** — `down_sql`, a `reverted_at`
+  column, and `listMigrations()` all exist and are unused by the app. See
+  `docs/ARCHITECTURE.md` → "What already exists for undo" before writing any.
+- **Drop column is the first destructive tool.** Today the security story is
+  that deletion is *absent*, not disabled — the vocabulary is the boundary.
+  Adding `dropColumn` changes that claim, and its reverse cannot restore the
+  data, only the column. Decide what `down_sql` means there before building it,
+  and keep the order: typed tool, then SQL generator, then reverse generator.

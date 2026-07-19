@@ -175,6 +175,28 @@ The `_meta.migrations` row holds the same `up_sql` and `down_sql` and is what
 undo will actually read, so the two are redundant by design: the row is the
 source of truth, the file is what a human looks at.
 
+### What already exists for undo (v1)
+
+Undo is scaffolded at the data layer and absent everywhere else. Before building
+it, know what is already here — none of it is wired into the app:
+
+| Piece | State |
+|---|---|
+| `down_sql` persisted per migration | ✅ Written on every apply, in the same transaction |
+| `_meta.migrations.reverted_at` | ✅ Column exists, nullable. Only `scripts/test-end-to-end.ts` ever sets it |
+| `listMigrations()` in `apply.ts` | ✅ Reads history newest-first, including `revertedAt`. Called only by the e2e script — no app code uses it |
+| `revertMigration()` | ❌ Does not exist |
+| History UI | ❌ Does not exist |
+| Re-plan-on-revert check | ❌ Does not exist — see below |
+
+The open question is not how to run `down_sql`; it is what to do when running it
+is no longer safe. `apply` re-plans against the live schema so a stale proposal
+is rejected cleanly, and undo needs the equivalent: reverting migration N when
+N+1 still depends on it must fail before any SQL runs. The
+`changeColumnType` reverse is the sharp case — the decision on record is
+**option 1: store the reverse anyway and let undo fail loudly inside the
+transaction**, so a lossy revert rolls back rather than silently truncating.
+
 ## Conventions
 
 - **Everything in English** — code, comments, UI copy, docs.
