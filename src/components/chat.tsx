@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Accordion,
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apply, propose, type ProposeResponse } from "@/app/actions";
+import { useDictation } from "@/components/use-dictation";
 import type { Turn } from "@/lib/migrations/propose";
 import type { Proposal } from "@/lib/migrations/sql";
 import type { ToolCall } from "@/lib/migrations/tools";
@@ -58,7 +59,9 @@ function transcriptOf(entries: Entry[]): Turn[] {
         return {
           role: "assistant",
           text: `[proposed ${entry.proposal.toolName}: ${entry.proposal.summary} — ${
-            entry.status === "applied" ? "applied by the user" : "not applied yet"
+            entry.status === "applied"
+              ? "applied by the user"
+              : "not applied yet"
           }]`,
         };
     }
@@ -72,6 +75,26 @@ export function Chat() {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const dictation = useDictation();
+  // What was already typed when dictation started, so speaking adds to it
+  // instead of replacing it.
+  const dictationBase = useRef("");
+
+  useEffect(() => {
+    if (!dictation.listening) return;
+    const base = dictationBase.current;
+    setInput(base ? `${base} ${dictation.transcript}` : dictation.transcript);
+  }, [dictation.listening, dictation.transcript]);
+
+  function toggleDictation() {
+    if (dictation.listening) {
+      dictation.stop();
+      return;
+    }
+    dictationBase.current = input.trim();
+    dictation.start();
+  }
+
   function scrollDown() {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({
@@ -84,6 +107,10 @@ export function Chat() {
   function send(message: string) {
     const text = message.trim();
     if (!text || isProposing) return;
+
+    // Sending ends the dictation session; otherwise the next words would be
+    // appended to a box that has already been cleared.
+    if (dictation.listening) dictation.stop();
 
     // Everything on screen before this message. `entries` is current here:
     // `send` runs from an event handler, and `isProposing` blocks a second
@@ -130,14 +157,17 @@ export function Chat() {
 
   async function onApply(index: number, call: ToolCall) {
     setEntryAt(index, (entry) =>
-      entry.kind === "proposal" ? { ...entry, status: "applying", error: undefined } : entry,
+      entry.kind === "proposal"
+        ? { ...entry, status: "applying", error: undefined }
+        : entry,
     );
 
     const result = await apply(call);
 
     setEntryAt(index, (entry) => {
       if (entry.kind !== "proposal") return entry;
-      if (!result.ok) return { ...entry, status: "pending", error: result.reason };
+      if (!result.ok)
+        return { ...entry, status: "pending", error: result.reason };
       return {
         ...entry,
         status: "applied",
@@ -188,21 +218,70 @@ export function Chat() {
               send(input);
             }
           }}
-          placeholder="Describe a change — “contacts need a company field”"
+          placeholder={
+            dictation.listening
+              ? "Listening…"
+              : "Describe a change — “contacts need a company field”"
+          }
           rows={2}
           className="resize-none"
           disabled={isProposing}
         />
-        <div className="mt-2 flex items-center justify-between">
+
+        {dictation.error && (
+          <p className="mt-2 text-xs text-destructive">{dictation.error}</p>
+        )}
+
+        <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Enter to send · Shift+Enter for a new line
+            {dictation.listening
+              ? "Listening — speak, then stop to edit before sending."
+              : "Enter to send · Shift+Enter for a new line"}
           </p>
-          <Button type="submit" size="sm" disabled={isProposing || !input.trim()}>
-            Send
-          </Button>
+          <div className="flex items-center gap-2">
+            {dictation.supported && (
+              <Button
+                type="button"
+                size="sm"
+                variant={dictation.listening ? "destructive" : "outline"}
+                onClick={toggleDictation}
+                disabled={isProposing}
+                aria-pressed={dictation.listening}
+                aria-label={dictation.listening ? "Stop dictating" : "Dictate"}
+                title={dictation.listening ? "Stop dictating" : "Dictate"}
+              >
+                <MicIcon listening={dictation.listening} />
+              </Button>
+            )}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isProposing || !input.trim()}
+            >
+              Send
+            </Button>
+          </div>
         </div>
       </form>
     </div>
+  );
+}
+
+function MicIcon({ listening }: { listening: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      className={`size-4 ${listening ? "animate-pulse" : ""}`}
+      aria-hidden
+    >
+      <rect x="9" y="2" width="6" height="11" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <path d="M12 17v4" />
+    </svg>
   );
 }
 

@@ -120,5 +120,11 @@ Explicitly out: authentication, multi-tenant, RLS, permissions, production,
 importing from other CRMs. Don't add them even if they look easy — they add
 complexity without touching the core idea.
 
+Voice is in and is dictation only: the browser's Web Speech API turns speech
+into text that fills the chat box, and the user still presses Send. The model
+never receives audio — the Claude API has no `audio_input` capability and no
+transcription endpoint — so this adds no provider, no key, and no new path to
+the tools.
+
 v1 (later, if v0 works): undo using the reverses, drop column with explicit
-confirmation, relations between entities, a real CRM seed (contacts, deals, notes). voice support
+confirmation, relations between entities, a real CRM seed (contacts, deals, notes).
