@@ -105,7 +105,8 @@ The engine. Four files, and the order they run in is the order they're listed.
 | `tools.ts` | The four typed operations — `createTable`, `addColumn`, `renameColumn`, `changeColumnType` — as Anthropic tool definitions with `strict: true`, plus Zod schemas for parsing the arguments back. **This file is the security boundary.** There is no `dropTable` or `dropColumn`; the model has no way to express the request. Also defines the identifier rule (lowercase snake_case, ≤63 chars) that keeps us from ever emitting a quoted identifier. |
 | `propose.ts` | Sends the schema and the tools to the model and returns either a validated `ToolCall` or plain text. The only file that talks to the Anthropic API. Contains no SQL and never asks for any. |
 | `sql.ts` | `planMigration(call, schema, rowCount)` → a `Proposal` (summary, impact, `upSql`, `downSql`) or a rejection with a plain-language reason. Pure — no database access — so every branch is directly testable. This is where the "must work with data in the table" rules live, e.g. refusing a required column on a populated table. |
-| `apply.ts` | `applyMigration(proposal)` runs the `up` SQL and inserts the history row in one transaction on a single checked-out connection. `listMigrations()` reads the history back. The `.sql` file is written after the commit, on purpose — see below. |
+| `apply.ts` | `applyMigration(proposal)` runs the `up` SQL and inserts the history row in one transaction on a single checked-out connection. `listMigrations()` reads the history back, `revertMigration(id)` runs a stored reverse. The `.sql` file is written after the commit, on purpose — see below. |
+| `revert.ts` | The undo half that touches no database: `MigrationRecord`, `describeRevert()` (what undoing a change does to the data, derived from the stored tool arguments) and `undoableId()` (which entry the UI may offer). See "Undo" below. |
 
 **Two-pass validation, and the difference between them:**
 
@@ -132,9 +133,10 @@ and carries on rather than failing.
 
 | File | What it does |
 |---|---|
-| `app/page.tsx` | Server component. Introspects, reads the rows, renders the split screen. `dynamic = "force-dynamic"` because the schema can change on any request and a cached page would show a stale one. |
-| `app/actions.ts` | Every server action, in two groups. Schema: `propose(message, history)` and `apply(call)` — the only bridge between the browser and the engine. Records: `loadTable`, `createRecord`, `updateRecordCell`, `deleteRecord`, which re-introspect on each call so names are resolved against the live schema rather than trusted from the request. |
-| `components/panel.tsx` | The right-hand side, and the toggle between its two readings of the same data. The toggle changes the presentation, never the source. |
+| `app/page.tsx` | Server component. Introspects, reads the rows and the migration history, renders the split screen. `dynamic = "force-dynamic"` because the schema can change on any request and a cached page would show a stale one. |
+| `app/actions.ts` | Every server action, in three groups. Schema: `propose(message, history)` and `apply(call)` — the only bridge between the browser and the engine. History: `revertChange(id)`. Records: `loadTable`, `createRecord`, `updateRecordCell`, `deleteRecord`, which re-introspect on each call so names are resolved against the live schema rather than trusted from the request. |
+| `components/panel.tsx` | The right-hand side, and the toggle between its three readings of the same database. The toggle changes the presentation, never the source. |
+| `components/history-view.tsx` | The History tab. Every applied migration newest first, its up and down SQL folded away, and an undo button on the single entry that is eligible. Entries below it say what is blocking them instead of offering a control that would be refused. |
 | `components/crm-view.tsx` | The non-technical view: entities down the side, records in the middle, edited in place. Cells become inputs on click; booleans are checkboxes and save immediately; new records are a draft row at the bottom. Deleting takes two clicks, because a row has no reverse the way a migration does. |
 | `components/entity-panel.tsx` | The technical view. Every table, its column types, raw values, read-only. Contains nothing specific to any entity — this is the file that would not exist if the UI were hand-written per table. |
 | `components/chat.tsx` | Message list, proposal cards with the SQL folded away, and the apply button. Also holds the conversation: `transcriptOf()` flattens what is on screen into the turns sent back with the next request, rendering past proposals as `[proposed ...]` lines so the model can see what it offered and whether the user took it. |
@@ -146,6 +148,11 @@ reasons. First, a client cannot hand the server a statement to execute — the S
 that runs is always the SQL this server produced. Second, re-planning re-checks
 the change against the schema *as it is now*, so a proposal that went stale
 while it sat on screen is rejected cleanly instead of failing halfway through.
+
+**`revertChange` takes only the id**, for the same reason. The reverse that runs
+is the one this server generated and stored when the migration was applied; the
+browser has no way to supply it or influence it, and which migration is eligible
+is decided inside the transaction rather than by the page that asked.
 
 After a successful apply the action calls `revalidatePath("/")` and the client
 calls `router.refresh()`, which re-runs the server component — the right-hand
@@ -160,6 +167,7 @@ sync.
 | `introspect-dump.ts` | Prints what introspection currently sees, raw and as the model sees it. Useful when the schema changes under you. |
 | `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it — plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started — plus the rejection cases. No model, no API credits. Run it after any change to `sql.ts` or `introspect.ts`. |
 | `test-rows.ts` | The regression suite for row editing: insert, update, delete against a populated table, `numeric(10,2)` surviving the round trip, the validation rejections, page clamping, and the identifier boundary — a table or column name that is really a SQL fragment must be refused, not escaped. No model, no API credits. Run it after any change to `rows/mutate.ts` or `rows/read.ts`. |
+| `test-undo.ts` | The regression suite for undo. Builds a real three-migration stack on a populated scratch table, then walks back down it: out-of-order refused before any SQL, the reverse restoring the schema byte for byte, hand-written values surviving, a column drop taking its values but not its rows, and a reverse that no longer fits the data failing with nothing changed. Removes the table, the history rows and the `.sql` files it created, so it can be run repeatedly. No model, no API credits. Run it after any change to `revert.ts` or `apply.ts`. |
 | `test-end-to-end.ts` | The full path with the real model: request → tool choice → SQL → apply → history row and file → revert. **Costs API credits** — run it deliberately, not on every save. Run it after changing `tools.ts` or `propose.ts`, since those are what shape the model's judgment. |
 
 ### `migrations/`
@@ -175,27 +183,65 @@ The `_meta.migrations` row holds the same `up_sql` and `down_sql` and is what
 undo will actually read, so the two are redundant by design: the row is the
 source of truth, the file is what a human looks at.
 
-### What already exists for undo (v1)
+## Undo (v1)
 
-Undo is scaffolded at the data layer and absent everywhere else. Before building
-it, know what is already here — none of it is wired into the app:
+Undo runs the reverse that was stored when the migration was applied. It adds no
+tool and the model is not involved — undoing is a user action on a row of
+`_meta.migrations`, the same way editing a record is a user action on a row of a
+table.
 
-| Piece | State |
+```
+  History tab ──── lists _meta.migrations, newest first
+        │
+        ▼
+  undoableId() ──── decides which single entry gets a button   (pure)
+        │
+        ▼
+  describeRevert() ─ what undoing does to the data            (pure, no model)
+        │
+        ▼
+  revertMigration(id) ── locks the row, re-checks, runs down_sql, stamps
+                         reverted_at — one transaction
+```
+
+| File | What it does |
 |---|---|
-| `down_sql` persisted per migration | ✅ Written on every apply, in the same transaction |
-| `_meta.migrations.reverted_at` | ✅ Column exists, nullable. Only `scripts/test-end-to-end.ts` ever sets it |
-| `listMigrations()` in `apply.ts` | ✅ Reads history newest-first, including `revertedAt`. Called only by the e2e script — no app code uses it |
-| `revertMigration()` | ❌ Does not exist |
-| History UI | ❌ Does not exist |
-| Re-plan-on-revert check | ❌ Does not exist — see below |
+| `migrations/revert.ts` | Pure and database-free. Holds `MigrationRecord`, `describeRevert()` and `undoableId()`. **The type lives here, not in `apply.ts`**, because `history-view.tsx` is a client component and needs both — importing them from `apply.ts` would pull `pg` into the browser bundle, the same constraint that governs `rows/cells.ts`. |
+| `migrations/apply.ts` → `revertMigration(id)` | The database half. One transaction on one connection. |
+| `components/history-view.tsx` | The History tab: every migration, its reverse folded away, and the undo button on the one entry that may be undone. |
 
-The open question is not how to run `down_sql`; it is what to do when running it
-is no longer safe. `apply` re-plans against the live schema so a stale proposal
-is rejected cleanly, and undo needs the equivalent: reverting migration N when
-N+1 still depends on it must fail before any SQL runs. The
-`changeColumnType` reverse is the sharp case — the decision on record is
-**option 1: store the reverse anyway and let undo fail loudly inside the
-transaction**, so a lossy revert rolls back rather than silently truncating.
+**Undo is last-in-first-out, and that is the whole safety story.** The open
+question was never how to run `down_sql` — it is what to do when running it is
+no longer safe. Reverting migration N while N+1 builds on it (undoing the
+`addColumn` that a later `renameColumn` renamed) would either fail halfway or
+leave the schema somewhere neither migration describes. Rather than detect that
+with a dependency graph, only the newest migration still in effect can be
+undone, which removes the case instead of handling it.
+
+**The eligibility check runs inside the transaction, not in the UI.**
+`undoableId()` decides what to draw; the authoritative check re-reads the row
+`FOR UPDATE` and re-derives the top of the stack after taking the lock. A page
+that has been open for an hour, or two tabs clicking at once, cannot get past
+it. This is the same reasoning as `apply` re-planning against the live schema
+rather than trusting the proposal on screen.
+
+**A reverse that no longer fits the data fails loudly.** This is the recorded
+decision for the `changeColumnType` case: store the reverse anyway, and let
+Postgres reject it inside the transaction rather than silently truncating. The
+undo rolls back, the schema is untouched, and `reverted_at` stays null — the
+migration is still in effect and the error names the value that blocked it.
+
+**Undo restores the schema, never the values.** `addColumn` reverses to
+`DROP COLUMN`, which deletes everything anyone typed into that column;
+`createTable` reverses to `DROP TABLE`. `describeRevert()` marks those
+`destructive: true` and the UI requires a second click, the same convention as
+deleting a record. A migration argument that no longer parses also counts as
+destructive — an unreadable change is not one to reassure anyone about.
+
+**The `.sql` file is left in place when a migration is undone.** It records that
+the migration was applied, which stays true; `reverted_at` on the row records
+that it was later undone. The row remains the source of truth, the file remains
+the thing a human reads.
 
 ## Conventions
 

@@ -2,6 +2,7 @@ import { Chat } from "@/components/chat";
 import { Panel } from "@/components/panel";
 import { introspectSchema } from "@/lib/schema/introspect";
 import { fetchAllTableData } from "@/lib/rows/read";
+import { listMigrations } from "@/lib/migrations/apply";
 
 // The schema can change on any request, so never serve this from a cache.
 export const dynamic = "force-dynamic";
@@ -9,6 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const schema = await introspectSchema();
   const tables = await fetchAllTableData(schema);
+  // Read here rather than from a client action: undo re-runs this server
+  // component through revalidatePath, so the history redraws from the database
+  // exactly like the panel does, with no client-side copy to keep in sync.
+  const history = await listMigrations();
 
   return (
     <div className="flex h-dvh flex-col">
@@ -25,7 +30,7 @@ export default async function Home() {
           <Chat />
         </div>
         <div className="min-h-0 bg-muted/30">
-          <Panel tables={tables} />
+          <Panel tables={tables} history={history} />
         </div>
       </div>
     </div>

@@ -2,6 +2,9 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pool } from "@/db";
 import type { Proposal } from "./sql";
+import type { MigrationRecord } from "./revert";
+
+export type { MigrationRecord };
 
 export type ApplyResult =
   | { ok: true; filename: string; fileWritten: boolean }
@@ -99,21 +102,11 @@ export async function applyMigration(
   return { ok: true, filename, fileWritten };
 }
 
-export type MigrationRecord = {
-  id: number;
-  filename: string;
-  summary: string;
-  toolName: string;
-  upSql: string;
-  downSql: string;
-  appliedAt: Date;
-  revertedAt: Date | null;
-};
-
 /** The migration history, newest first. */
 export async function listMigrations(): Promise<MigrationRecord[]> {
   const { rows } = await pool.query(
-    `SELECT id, filename, summary, tool_name, up_sql, down_sql, applied_at, reverted_at
+    `SELECT id, filename, summary, tool_name, tool_args, up_sql, down_sql,
+            applied_at, reverted_at
        FROM _meta.migrations
       ORDER BY id DESC`,
   );
@@ -123,9 +116,104 @@ export async function listMigrations(): Promise<MigrationRecord[]> {
     filename: r.filename,
     summary: r.summary,
     toolName: r.tool_name,
+    toolArgs: r.tool_args,
     upSql: r.up_sql,
     downSql: r.down_sql,
     appliedAt: r.applied_at,
     revertedAt: r.reverted_at,
   }));
+}
+
+export type RevertResult =
+  | { ok: true; summary: string }
+  | { ok: false; reason: string };
+
+/**
+ * Undoes an applied migration by running the reverse it was stored with.
+ *
+ * Three things happen in one transaction on one connection, and the order
+ * matters:
+ *
+ * 1. The row is read `FOR UPDATE`. That lock is what makes the stack check
+ *    below true at the moment the SQL runs rather than at the moment it was
+ *    read — two people clicking Undo at once cannot both see themselves at the
+ *    top of the stack.
+ * 2. The stack check. Only the newest migration still in effect may be undone;
+ *    see `undoableId()` for why LIFO rather than a dependency graph.
+ * 3. `down_sql`, then the `reverted_at` stamp. Postgres runs DDL
+ *    transactionally, so a reverse that fails — a `changeColumnType` back to a
+ *    type some value written since no longer fits — rolls the whole thing back.
+ *    Nothing changes and the migration is still marked as in effect. That is
+ *    the decision recorded in docs/ARCHITECTURE.md: store the reverse anyway
+ *    and let it fail loudly, rather than silently truncating.
+ *
+ * The .sql file is left alone. It records that the migration was applied, which
+ * remains true; `reverted_at` on the row records that it was later undone.
+ */
+export async function revertMigration(id: number): Promise<RevertResult> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows } = await client.query(
+      `SELECT id, summary, down_sql, reverted_at
+         FROM _meta.migrations
+        WHERE id = $1
+          FOR UPDATE`,
+      [id],
+    );
+
+    const target = rows[0];
+    if (!target) {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "That change is not in the history." };
+    }
+    if (target.reverted_at !== null) {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "That change has already been undone." };
+    }
+
+    const newest = await client.query(
+      `SELECT id, summary
+         FROM _meta.migrations
+        WHERE reverted_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1`,
+    );
+
+    if (newest.rows[0] && newest.rows[0].id !== id) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        reason: `Undo the newer change first — "${newest.rows[0].summary}" was applied after this one and may depend on it.`,
+      };
+    }
+
+    try {
+      await client.query(target.down_sql);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      // Kept verbatim rather than softened: the Postgres message names the
+      // value that does not fit, which is the only way to find the row.
+      return {
+        ok: false,
+        reason: `The database refused the undo, so nothing was changed: ${
+          (err as Error).message
+        }`,
+      };
+    }
+
+    await client.query(
+      `UPDATE _meta.migrations SET reverted_at = now() WHERE id = $1`,
+      [id],
+    );
+
+    await client.query("COMMIT");
+    return { ok: true, summary: target.summary };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    return { ok: false, reason: (err as Error).message };
+  } finally {
+    client.release();
+  }
 }

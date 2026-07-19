@@ -5,7 +5,7 @@ import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
 import { proposeChange, type Turn } from "@/lib/migrations/propose";
 import { planMigration, type Proposal } from "@/lib/migrations/sql";
-import { applyMigration } from "@/lib/migrations/apply";
+import { applyMigration, revertMigration } from "@/lib/migrations/apply";
 import { isToolName, toolSchemas, type ToolCall } from "@/lib/migrations/tools";
 import { fetchTableData } from "@/lib/rows/read";
 import type { TableData } from "@/lib/rows/cells";
@@ -133,6 +133,33 @@ export async function apply(call: ToolCall): Promise<ApplyResponse> {
     fileWritten: applied.fileWritten,
     summary: plan.proposal.summary,
   };
+}
+
+/* ---------------------------------------------------------------------------
+ * History.
+ * ------------------------------------------------------------------------ */
+
+export type RevertResponse =
+  | { ok: true; summary: string }
+  | { ok: false; reason: string };
+
+/**
+ * Undoes an applied change.
+ *
+ * Takes only the id — for the same reason `apply` takes the tool call and not
+ * the SQL. The reverse that runs is the one this server stored when the
+ * migration was applied; a client has no way to supply or influence it. Which
+ * migration is eligible is decided inside the transaction, not here, so a stale
+ * page cannot undo something that is no longer at the top of the stack.
+ */
+export async function revertChange(id: number): Promise<RevertResponse> {
+  if (!Number.isInteger(id)) return { ok: false, reason: "Invalid change." };
+
+  const result = await revertMigration(id);
+  if (!result.ok) return result;
+
+  revalidatePath("/");
+  return result;
 }
 
 /* ---------------------------------------------------------------------------

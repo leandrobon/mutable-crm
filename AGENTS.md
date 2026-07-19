@@ -126,16 +126,29 @@ never receives audio — the Claude API has no `audio_input` capability and no
 transcription endpoint — so this adds no provider, no key, and no new path to
 the tools.
 
-v1 (later, if v0 works): undo using the reverses, drop column with explicit
-confirmation, relations between entities, a real CRM seed (contacts, deals, notes).
+## v1 (in progress)
 
-Two notes for whoever starts v1:
+**Undo — built.** The History tab lists every applied migration and runs the
+reverse it was stored with. It adds no tool and the model is not involved:
+undoing is a user action on a row of `_meta.migrations`, the way editing a
+record is a user action on a row of a table. Two things to know before touching
+it, both explained in `docs/ARCHITECTURE.md` → "Undo":
 
-- **Undo is already scaffolded at the data layer** — `down_sql`, a `reverted_at`
-  column, and `listMigrations()` all exist and are unused by the app. See
-  `docs/ARCHITECTURE.md` → "What already exists for undo" before writing any.
-- **Drop column is the first destructive tool.** Today the security story is
-  that deletion is *absent*, not disabled — the vocabulary is the boundary.
-  Adding `dropColumn` changes that claim, and its reverse cannot restore the
-  data, only the column. Decide what `down_sql` means there before building it,
-  and keep the order: typed tool, then SQL generator, then reverse generator.
+- **It is last-in-first-out.** Only the newest migration still in effect can be
+  undone. That is what makes it safe without a dependency graph, and the check
+  that enforces it runs inside the transaction, not in the UI.
+- **It restores the schema, never the values.** Undoing an `addColumn` drops
+  the column and everything typed into it. `describeRevert()` marks those
+  destructive and the UI takes a second click.
+
+Run `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts`
+after any change to `revert.ts` or `apply.ts`.
+
+Still to do: drop column with explicit confirmation, relations between entities,
+a real CRM seed (contacts, deals, notes).
+
+**Drop column is the first destructive tool.** Today the security story is that
+deletion is *absent* from the vocabulary, not disabled — that is the boundary.
+Adding `dropColumn` changes the claim, and its reverse cannot restore the data,
+only the column. Decide what `down_sql` means there before building it, and keep
+the order: typed tool, then SQL generator, then reverse generator.
