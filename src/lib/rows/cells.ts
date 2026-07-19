@@ -6,7 +6,7 @@ import type { Column, Table } from "@/lib/schema/types";
  * Deliberately free of any database import. Both views are client components
  * and need `formatCell` and `baseType` to render; if these lived beside the
  * queries, importing them would pull `pg` into the browser bundle, which fails
- * to build. Reading rows is in `read.ts`, writing them in `mutate.ts` — both
+ * to build. Reading rows is in `read.ts`, writing them in `mutate.ts`, both
  * server-only, both importing from here.
  */
 
@@ -16,7 +16,7 @@ import type { Column, Table } from "@/lib/schema/types";
  *
  * These are raw values, not display strings. The CRM view writes cells back to
  * the database, and formatting a boolean to "yes" on the way out would mean
- * parsing "yes" back to a boolean on the way in — a lossy round trip through a
+ * parsing "yes" back to a boolean on the way in, a lossy round trip through a
  * human-readable form. Each view formats at render time instead.
  */
 export type CellValue = string | number | boolean | null;

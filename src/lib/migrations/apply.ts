@@ -24,7 +24,7 @@ function migrationName(proposal: Proposal, now: Date): string {
   const args = proposal.args as Record<string, unknown>;
 
   // createTables names several at once. The filename takes the first and counts
-  // the rest — it only has to be recognisable and unique, and the full list is
+  // the rest. It only has to be recognisable and unique, and the full list is
   // in the file and in the history row.
   if (Array.isArray(args.tables)) {
     const names = args.tables
@@ -64,7 +64,7 @@ function fileContents(proposal: Proposal, name: string): string {
  * Applies a proposal.
  *
  * The schema change and the history row go in one transaction on a single
- * connection — Postgres runs DDL transactionally, so if the SQL fails nothing
+ * connection. Postgres runs DDL transactionally, so if the SQL fails nothing
  * is changed and nothing is recorded.
  *
  * The .sql file is written afterwards, deliberately outside the transaction. A
@@ -153,13 +153,13 @@ export type RevertResult =
  *
  * 1. The row is read `FOR UPDATE`. That lock is what makes the stack check
  *    below true at the moment the SQL runs rather than at the moment it was
- *    read — two people clicking Undo at once cannot both see themselves at the
+ *    read, so two people clicking Undo at once cannot both see themselves at the
  *    top of the stack.
  * 2. The stack check. Only the newest migration still in effect may be undone;
  *    see `undoableId()` for why LIFO rather than a dependency graph.
  * 3. `down_sql`, then the `reverted_at` stamp. Postgres runs DDL
- *    transactionally, so a reverse that fails — a `changeColumnType` back to a
- *    type some value written since no longer fits — rolls the whole thing back.
+ *    transactionally, so a reverse that fails (a `changeColumnType` back to a
+ *    type some value written since no longer fits) rolls the whole thing back.
  *    Nothing changes and the migration is still marked as in effect. That is
  *    the decision recorded in docs/ARCHITECTURE.md: store the reverse anyway
  *    and let it fail loudly, rather than silently truncating.
@@ -202,7 +202,7 @@ export async function revertMigration(id: number): Promise<RevertResult> {
       await client.query("ROLLBACK");
       return {
         ok: false,
-        reason: `Undo the newer change first — "${newest.rows[0].summary}" was applied after this one and may depend on it.`,
+        reason: `Undo the newer change first: "${newest.rows[0].summary}" was applied after this one and may depend on it.`,
       };
     }
 

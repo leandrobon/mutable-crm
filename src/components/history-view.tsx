@@ -20,7 +20,7 @@ import {
 /**
  * The migration history, newest first, and the one place undo is offered.
  *
- * Only the newest change still in effect gets a button — undo is last-in-
+ * Only the newest change still in effect gets a button, because undo is last-in-
  * first-out, so anything below it is shown with what is blocking it rather than
  * a control that would be refused. The server decides this again inside the
  * transaction; this list is a snapshot and only decides what to draw.
@@ -109,7 +109,7 @@ function HistoryEntry({
               <ul className="flex flex-col gap-1">
                 {plan.impact.map((line) => (
                   <li key={line} className="text-xs text-muted-foreground">
-                    — {line}
+                    – {line}
                   </li>
                 ))}
               </ul>

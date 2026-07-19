@@ -16,7 +16,7 @@ type View = "crm" | "database" | "history";
  * "database" is the technical one: every table, its column types, raw values.
  * "history" is how it got that way: every applied migration and its reverse.
  * The first two render from the introspected schema and the third from
- * `_meta.migrations` — the toggle changes the presentation, never the source.
+ * `_meta.migrations`. The toggle changes the presentation, never the source.
  */
 export function Panel({
   tables,

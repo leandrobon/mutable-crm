@@ -2,7 +2,7 @@
 
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes: APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 
 <!-- END:nextjs-agent-rules -->
 
@@ -37,7 +37,7 @@ tool and its arguments.
 This buys three things:
 
 - It cannot hallucinate SQL syntax, because it never writes SQL.
-- It cannot execute a `DROP` we didn't enable — the tool vocabulary is the
+- It cannot execute a `DROP` we didn't enable. The tool vocabulary is the
   security boundary, not a prompt asking it to behave.
 - The plain-language summary is derived from the tool arguments, not from a
   second model call: cheaper, and it cannot contradict the SQL it describes.
@@ -50,7 +50,7 @@ to exist.
 
 - Next.js 16 (App Router) + TypeScript. Server actions, no separate REST API.
 - Postgres in Docker, **port 5433** (see `docker-compose.yml`).
-- Drizzle ORM — chosen over Prisma because we need to generate and execute DDL
+- Drizzle ORM, chosen over Prisma because we need to generate and execute DDL
   programmatically at runtime, not a closed migration cycle.
 - Anthropic SDK with tool calling. **No LangChain**, deliberately.
 - shadcn/ui.
@@ -62,7 +62,7 @@ SQL generators for the four operations are code we own.
 
 ## Layout
 
-**Read `docs/ARCHITECTURE.md` before adding a file** — it documents every
+**Read `docs/ARCHITECTURE.md` before adding a file**. It documents every
 directory and file, and why each exists. Keep it current when you add one.
 
 The short version:
@@ -102,7 +102,7 @@ npm run db:reset && npm run db:init
 rm migrations/*.sql          # keep .gitkeep
 ```
 
-Delete the `.sql` files in the same breath — they describe migrations the new
+Delete the `.sql` files in the same breath. They describe migrations the new
 database has no history rows for, and leaving them makes the folder claim a past
 the database does not have.
 
@@ -123,7 +123,7 @@ npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts
 | `sql.ts`, `introspect.ts` | `test-migrations.ts` |
 | `rows/mutate.ts`, `rows/read.ts` | `test-rows.ts` |
 | `revert.ts`, `apply.ts` | `test-undo.ts` |
-| `tools.ts`, `propose.ts` | `test-end-to-end.ts` — **costs API credits** |
+| `tools.ts`, `propose.ts` | `test-end-to-end.ts` (**costs API credits**) |
 
 Each suite creates its own table, seeds it, and drops it at the end, so they run
 on an empty database and leave it as they found it. None of them except
@@ -144,12 +144,12 @@ change column type. Nothing else.
 
 **Creating tables is plural.** `createTables` takes an array, so "a CRM to track
 my farm" becomes one tool call, one proposal, one migration and one undo, instead
-of a stack of them. A single table is an array of one — there is no singular
+of a stack of them. A single table is an array of one. There is no singular
 version of the tool offered to the model. This is four operations, not five.
 
 - **One bad table rejects the whole request.** They are created in a single
   transaction, so there is no applying the good half.
-- **The batch is capped** (`MAX_TABLES_PER_REQUEST`). Not a database limit — a
+- **The batch is capped** (`MAX_TABLES_PER_REQUEST`). Not a database limit, a
   review limit. Applying is a user action and rule 1 assumes the user *reads*
   what they apply; a twenty-table proposal gets approved by scrolling.
 
@@ -157,7 +157,7 @@ version of the tool offered to the model. This is four operations, not five.
 so history rows written in that shape can still be read and reversed.
 
 **Undo** runs the reverse a migration was stored with, from the History tab. It
-adds no tool and the model is not involved — undoing is a user action on a row of
+adds no tool and the model is not involved. Undoing is a user action on a row of
 `_meta.migrations`, the way editing a record is a user action on a row of a
 table. Two properties to preserve:
 
@@ -168,15 +168,15 @@ table. Two properties to preserve:
   column and everything typed into it. `describeRevert()` marks those destructive
   and the UI takes a second click.
 
-**Editing rows** — add, edit, delete a record from the CRM view — is data, not
+**Editing rows** (add, edit, delete a record from the CRM view) is data, not
 schema. No proposal, no migration, no model, no `_meta.migrations` row. The tool
 vocabulary is still the security boundary for everything the model can reach, and
 the model cannot reach this.
 
 **Voice is dictation only.** The browser's Web Speech API turns speech into text
 that fills the chat box, and the user still presses Send. The model never
-receives audio — the Claude API has no `audio_input` capability and no
-transcription endpoint — so this adds no provider, no key, and no new path to the
+receives audio. The Claude API has no `audio_input` capability and no
+transcription endpoint, so this adds no provider, no key, and no new path to the
 tools.
 
 **There are no relationships between tables.** There is no foreign key tool, so
@@ -186,13 +186,13 @@ gets can imply relationships it does not enforce, and the model's reply is the
 only place that gap is disclosed.
 
 Explicitly out: authentication, multi-tenant, RLS, permissions, production,
-importing from other CRMs. Don't add them even if they look easy — they add
+importing from other CRMs. Don't add them even if they look easy. They add
 complexity without touching the core idea.
 
 ## If you extend it
 
 **Drop column would be the first destructive tool.** The security story is that
-deletion is *absent* from the vocabulary, not disabled — that is the boundary.
+deletion is *absent* from the vocabulary, not disabled, and that is the boundary.
 Adding `dropColumn` changes the claim, and its reverse cannot restore the data,
 only the column. Decide what `down_sql` means there before building it.
 

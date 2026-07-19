@@ -22,7 +22,7 @@ function check(label: string, condition: boolean, detail = "") {
   if (condition) console.log(`  ok   ${label}`);
   else {
     failures++;
-    console.log(`  FAIL ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  FAIL ${label}${detail ? `: ${detail}` : ""}`);
   }
 }
 
@@ -102,7 +102,7 @@ async function main() {
 
   if (!applied.ok) {
     failures++;
-    console.log(`  FAIL apply failed — ${applied.reason}`);
+    console.log(`  FAIL apply failed: ${applied.reason}`);
     await pool.end();
     process.exit(1);
   }

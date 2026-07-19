@@ -21,7 +21,7 @@ function toCell(value: unknown, type: string): CellValue {
 /**
  * Reads one page of a table.
  *
- * The table name is not interpolated from user input — it comes from the
+ * The table name is not interpolated from user input. It comes from the
  * introspected schema, and we look it up there first. That lookup is what makes
  * the interpolation safe; there is no other path into this string.
  */
@@ -39,8 +39,8 @@ export async function fetchTableData(
   const totalRows = countRows[0].n;
   const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
 
-  // A page that no longer exists — rows were deleted, or the client asked for
-  // one past the end — reads as the last page rather than as an empty table.
+  // A page that no longer exists (rows were deleted, or the client asked for
+  // one past the end) reads as the last page rather than as an empty table.
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
 
   const { rows } = await pool.query(

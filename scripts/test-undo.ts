@@ -6,8 +6,8 @@
  * schema byte for byte, data surviving, a lossy reverse failing loudly instead
  * of truncating.
  *
- * No model, no API credits. Everything it creates — the table, the history
- * rows, the .sql files — is removed at the end, so it can be run repeatedly.
+ * No model, no API credits. Everything it creates (the table, the history
+ * rows, the .sql files) is removed at the end, so it can be run repeatedly.
  */
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ function check(label: string, condition: boolean, detail = "") {
     console.log(`  ok   ${label}`);
   } else {
     failures++;
-    console.log(`  FAIL ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  FAIL ${label}${detail ? `: ${detail}` : ""}`);
   }
 }
 
@@ -50,7 +50,7 @@ async function rowCount(table: string): Promise<number> {
 /** Everything this script creates, so it can undo itself at the end. */
 const created: { id: number; filename: string }[] = [];
 
-/** Applies a change through the real path — plan, then apply — and returns the
+/** Applies a change through the real path (plan, then apply) and returns the
  *  history row it wrote. */
 async function applyStep(call: ToolCall): Promise<number> {
   const schema = await introspectSchema();
@@ -121,7 +121,7 @@ async function main() {
 
   await pool.query(`UPDATE ${TABLE} SET note = 'written by hand'`);
 
-  // The schema as it is with two migrations applied — reverting the third must
+  // The schema as it is with two migrations applied. Reverting the third must
   // come back to exactly this.
   const afterTwo = fingerprint(await introspectSchema());
 

@@ -16,8 +16,8 @@ export default async function Home() {
   // exactly like the panel does, with no client-side copy to keep in sync.
   const history = await listMigrations();
 
-  // The two halves are rendered here, on the server, and handed to Workspace —
-  // it only decides how much room each one gets.
+  // The two halves are rendered here, on the server, and handed to Workspace.
+  // It only decides how much room each one gets.
   return (
     <Workspace
       chat={<Chat />}

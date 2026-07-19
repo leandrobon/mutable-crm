@@ -47,9 +47,9 @@ async function rowCount(tableName: string | null): Promise<number> {
  */
 /**
  * The transcript arrives from the client, so it is shaped here before the model
- * sees it. It only ever becomes conversational context — the tool call the
+ * sees it. It only ever becomes conversational context: the tool call the
  * model returns is validated on its own, and `apply` re-plans from the live
- * schema — so a doctored history cannot widen what this server will execute.
+ * schema, so a doctored history cannot widen what this server will execute.
  */
 function sanitizeHistory(history: unknown): Turn[] {
   if (!Array.isArray(history)) return [];
@@ -109,7 +109,7 @@ export type ApplyResponse =
  * Applies a previously proposed change.
  *
  * Takes the tool call, not the SQL. The SQL is regenerated here from the
- * arguments, so what runs is always what this server produced — a client
+ * arguments, so what runs is always what this server produced. A client
  * cannot hand us a statement to execute. Re-planning also re-checks the
  * proposal against the schema as it is *now*, so a proposal that went stale
  * (the column was already renamed in another tab) is rejected instead of
@@ -159,7 +159,7 @@ export type RevertResponse =
 /**
  * Undoes an applied change.
  *
- * Takes only the id — for the same reason `apply` takes the tool call and not
+ * Takes only the id, for the same reason `apply` takes the tool call and not
  * the SQL. The reverse that runs is the one this server stored when the
  * migration was applied; a client has no way to supply or influence it. Which
  * migration is eligible is decided inside the transaction, not here, so a stale
@@ -181,7 +181,7 @@ export async function revertChange(id: number): Promise<RevertResponse> {
  * Editing rows is not a schema change: no proposal, no migration file, no
  * model. These run straight from the CRM view. Each one re-introspects first,
  * so the table and column names are resolved against the live schema rather
- * than trusted from the request — see lib/rows/mutate.ts.
+ * than trusted from the request. See lib/rows/mutate.ts.
  * ------------------------------------------------------------------------ */
 
 export type RowResult = { ok: true } | { ok: false; reason: string };

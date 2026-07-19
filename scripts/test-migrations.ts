@@ -26,11 +26,11 @@ function check(label: string, condition: boolean, detail = "") {
     console.log(`  ok   ${label}`);
   } else {
     failures++;
-    console.log(`  FAIL ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  FAIL ${label}${detail ? `: ${detail}` : ""}`);
   }
 }
 
-/** A transaction has to run on one checked-out connection — pool.query("BEGIN")
+/** A transaction has to run on one checked-out connection, because pool.query("BEGIN")
  *  may put the following statements on a different connection entirely. */
 async function runInTransaction(sql: string) {
   const client = await pool.connect();
@@ -60,7 +60,7 @@ function fingerprint(schema: Awaited<ReturnType<typeof introspectSchema>>) {
   return JSON.stringify(schema);
 }
 
-/** The existing table an operation acts on, or null — createTables acts on
+/** The existing table an operation acts on, or null: createTables acts on
  *  none of them, every table in it is new. Mirrors actions.ts. */
 function subjectTable(call: ToolCall): string | null {
   return "tableName" in call.args ? call.args.tableName : null;
@@ -77,7 +77,7 @@ async function roundTrip(label: string, call: ToolCall) {
   const result = planMigration(call, before, count);
   if (!result.ok) {
     failures++;
-    console.log(`  FAIL rejected unexpectedly — ${result.reason}`);
+    console.log(`  FAIL rejected unexpectedly: ${result.reason}`);
     return;
   }
 
@@ -90,7 +90,7 @@ async function roundTrip(label: string, call: ToolCall) {
     await runInTransaction(proposal.upSql);
   } catch (err) {
     failures++;
-    console.log(`  FAIL up failed — ${(err as Error).message}`);
+    console.log(`  FAIL up failed: ${(err as Error).message}`);
     return;
   }
 
@@ -111,7 +111,7 @@ async function roundTrip(label: string, call: ToolCall) {
     await runInTransaction(proposal.downSql);
   } catch (err) {
     failures++;
-    console.log(`  FAIL down failed — ${(err as Error).message}`);
+    console.log(`  FAIL down failed: ${(err as Error).message}`);
     return;
   }
 
@@ -260,7 +260,7 @@ async function main() {
     },
   });
 
-  // One bad table rejects the batch — there is no applying the good half.
+  // One bad table rejects the batch, there is no applying the good half.
   await expectRejection("createTables where one table already exists", {
     name: "createTables",
     args: {

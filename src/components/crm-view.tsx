@@ -26,7 +26,7 @@ import type { Column } from "@/lib/schema/types";
  * editable in place.
  *
  * Like the database view, this is generated entirely from the introspected
- * schema — there is no component here that knows what a contact is.
+ * schema, so there is no component here that knows what a contact is.
  */
 export function CrmView({ tables }: { tables: TableData[] }) {
   const router = useRouter();
@@ -36,8 +36,8 @@ export function CrmView({ tables }: { tables: TableData[] }) {
   const [page, setPage] = useState(0);
   const [data, setData] = useState<TableData | null>(tables[0] ?? null);
 
-  // The entity may vanish under us — the chat can change the schema at any
-  // time — so fall back to whatever the first one is now.
+  // The entity may vanish under us (the chat can change the schema at any
+  // time), so fall back to whatever the first one is now.
   const name = selected && tables.some((t) => t.table.name === selected)
     ? selected
     : tables[0]?.table.name ?? null;
@@ -62,7 +62,7 @@ export function CrmView({ tables }: { tables: TableData[] }) {
   // Genuine synchronisation with an external system: the rows for this entity
   // and page are fetched from the server. `reload` sets state only after its
   // await, never synchronously in the effect body, which the lint rule cannot
-  // see past — hence the targeted exception rather than a restructure.
+  // see past, hence the targeted exception rather than a restructure.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
@@ -74,7 +74,7 @@ export function CrmView({ tables }: { tables: TableData[] }) {
         <div className="max-w-sm text-center">
           <p className="text-sm font-medium">Nothing to show yet</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Ask for an entity on the left — try &ldquo;I want to track contacts
+            Ask for an entity on the left. Try &ldquo;I want to track contacts
             with a name and an email&rdquo;.
           </p>
         </div>
@@ -300,8 +300,8 @@ function inputStep(column: Column): string | undefined {
 }
 
 /**
- * A cell that becomes an input when clicked. Booleans skip that step — a
- * checkbox is already the editor — and save on the spot.
+ * A cell that becomes an input when clicked. Booleans skip that step (a
+ * checkbox is already the editor) and save on the spot.
  *
  * `onSave` returns whether the write succeeded, so a rejected value stays in
  * the input for the user to fix instead of silently reverting.
@@ -378,7 +378,7 @@ function EditableCell({
       }}
       className="flex h-9 w-full items-center px-3 text-left text-sm hover:bg-accent/50"
     >
-      {display ?? <span className="text-muted-foreground/50">—</span>}
+      {display ?? <span className="text-muted-foreground/50">–</span>}
     </button>
   );
 }
@@ -459,8 +459,8 @@ function NewRecordRow({
 }
 
 /**
- * Deleting a record cannot be undone — there is no reverse for data the way
- * there is for a migration — so it takes two clicks.
+ * Deleting a record cannot be undone, because there is no reverse for data the
+ * way there is for a migration, so it takes two clicks.
  */
 function DeleteButton({ onDelete }: { onDelete: () => Promise<void> }) {
   const [confirming, setConfirming] = useState(false);

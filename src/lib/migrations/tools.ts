@@ -3,7 +3,7 @@ import { ALLOWED_TYPES } from "@/lib/schema/types";
 
 /**
  * Postgres identifiers we are willing to generate. Anything outside this shape
- * would need double-quoting in SQL — by refusing it we never emit a quoted
+ * would need double-quoting in SQL, and by refusing it we never emit a quoted
  * identifier, so there is no quoting bug to have. 63 is Postgres' limit;
  * longer names get truncated silently, which would leave a reverse migration
  * pointing at the wrong object.
@@ -23,7 +23,7 @@ const COLUMN_TYPE = z.enum(ALLOWED_TYPES);
  * How many tables one request may create, and how many columns each may have.
  *
  * These are review limits, not database limits. Applying is a user action and
- * the user is expected to read what they are applying — a proposal for twenty
+ * the user is expected to read what they are applying. A proposal for twenty
  * tables would be approved by scrolling, not by reading, which quietly turns
  * the review step into a rubber stamp.
  */
@@ -44,7 +44,7 @@ const TABLE_DEFINITION = z.object({
     .max(MAX_COLUMNS_PER_TABLE),
 });
 
-/** Zod schemas — the second validation pass. The API guarantees shape via
+/** Zod schemas, the second validation pass. The API guarantees shape via
  *  `strict: true`; these give us parsed, typed values inside the app. */
 export const toolSchemas = {
   createTables: z.object({
@@ -52,7 +52,7 @@ export const toolSchemas = {
   }),
 
   /**
-   * The single-table form. Not offered to the model — `createTables` covers it
+   * The single-table form. Not offered to the model, because `createTables` covers it
    * with an array of one, and two overlapping tools would only give the model a
    * pointless choice to get wrong. It stays here so `_meta.migrations` rows
    * holding arguments in this shape can still be parsed: `describeRevert()`
@@ -110,7 +110,7 @@ const identifierDescription =
 /**
  * The tool definitions sent to the model. `strict: true` plus
  * `additionalProperties: false` and an explicit `required` list makes the API
- * guarantee the arguments match these schemas — the model cannot return a
+ * guarantee the arguments match these schemas, so the model cannot return a
  * malformed argument object.
  *
  * This list is the security boundary: there is no tool for dropping a table or
@@ -120,7 +120,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "createTables",
     description:
-      "Create one or more new tables in a single change. Use this for a single table as well — pass an array of one. When the user describes a whole area of their business rather than one entity, design the full set of tables here in one call, so they review and apply it as one decision. Every table automatically gets an `id` primary key and a `created_at` timestamp — do not include them in any columns list.",
+      "Create one or more new tables in a single change. Use this for a single table as well: pass an array of one. When the user describes a whole area of their business rather than one entity, design the full set of tables here in one call, so they review and apply it as one decision. Every table automatically gets an `id` primary key and a `created_at` timestamp, so do not include them in any columns list.",
     strict: true,
     input_schema: {
       type: "object",
@@ -203,7 +203,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "renameColumn",
     description:
-      "Rename an existing column. This preserves the data — use it when the user wants to change what a field is called, not what it holds.",
+      "Rename an existing column. This preserves the data. Use it when the user wants to change what a field is called, not what it holds.",
     strict: true,
     input_schema: {
       type: "object",

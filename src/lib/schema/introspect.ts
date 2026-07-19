@@ -30,7 +30,7 @@ type Row = {
 
 /**
  * Reads the live schema from `public`. Internal tables live in `_meta`, so this
- * never sees them — see AGENTS.md.
+ * never sees them, see AGENTS.md.
  */
 export async function introspectSchema(): Promise<DbSchema> {
   const { rows } = await pool.query<Row>(`

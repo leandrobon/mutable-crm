@@ -40,7 +40,7 @@ const EXAMPLES = [
  *
  * A proposal is not text on screen, but leaving it out would make the
  * transcript lie: the model would see itself answer a request with nothing.
- * Its status matters too — "you offered this and the user has not applied it"
+ * Its status matters too: "you offered this and the user has not applied it"
  * and "this is now in the schema" lead to different next moves.
  */
 function transcriptOf(entries: Entry[]): Turn[] {
@@ -58,11 +58,11 @@ function transcriptOf(entries: Entry[]): Turn[] {
       case "proposal":
         return {
           role: "assistant",
-          text: `[proposed ${entry.proposal.toolName}: ${entry.proposal.summary} — ${
+          text: `[proposed ${entry.proposal.toolName}: ${entry.proposal.summary} (${
             entry.status === "applied"
               ? "applied by the user"
               : "not applied yet"
-          }]`,
+          })]`,
         };
     }
   });
@@ -177,7 +177,7 @@ export function Chat() {
       };
     });
 
-    // The right-hand panel is a server component — this re-renders it from the
+    // The right-hand panel is a server component, so this re-renders it from the
     // new schema.
     router.refresh();
   }
@@ -221,7 +221,7 @@ export function Chat() {
           placeholder={
             dictation.listening
               ? "Listening…"
-              : "Describe a change — “contacts need a company field”"
+              : "Describe a change: “contacts need a company field”"
           }
           rows={2}
           className="resize-none"
@@ -235,7 +235,7 @@ export function Chat() {
         <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             {dictation.listening
-              ? "Listening — speak, then stop to edit before sending."
+              ? "Listening. Speak, then stop to edit before sending."
               : "Enter to send · Shift+Enter for a new line"}
           </p>
           <div className="flex items-center gap-2">

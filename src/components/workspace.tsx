@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
  * `Chat`'s own state, so `{showChat && chat}` would throw away every message
  * the moment you collapsed it, and hiding something is not a reasonable way to
  * lose your history. Kept mounted, the transcript is still there when it comes
- * back — including any proposal waiting to be applied.
+ * back, including any proposal waiting to be applied.
  */
 export function Workspace({
   chat,
@@ -56,7 +56,7 @@ export function Workspace({
       >
         <div
           id="chat-panel"
-          // `hidden` rather than unmounting — see above.
+          // `hidden` rather than unmounting, see above.
           className={
             showChat
               ? "min-h-0 border-b lg:border-b-0 lg:border-r"

@@ -11,7 +11,7 @@ import { formatCell, type TableData } from "@/lib/rows/cells";
 
 /**
  * Renders every table from the live schema. There is nothing here specific to
- * contacts, deals, or any other entity — add a table through the chat and it
+ * contacts, deals, or any other entity. Add a table through the chat and it
  * appears, because this reads whatever introspection returned.
  */
 export function EntityPanel({ tables }: { tables: TableData[] }) {
@@ -21,7 +21,7 @@ export function EntityPanel({ tables }: { tables: TableData[] }) {
         <div className="max-w-sm text-center">
           <p className="text-sm font-medium">No entities yet</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Ask for one on the left — try &ldquo;I want to track contacts with a
+            Ask for one on the left. Try &ldquo;I want to track contacts with a
             name and an email&rdquo;.
           </p>
         </div>

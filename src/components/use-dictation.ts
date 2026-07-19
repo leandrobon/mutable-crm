@@ -12,8 +12,8 @@ import {
  * Dictation via the browser's Web Speech API.
  *
  * The transcript is put in the textarea rather than sent. Recognition mangles
- * exactly the words this app cares about — "snake_case", "numeric", column
- * names — and a wrong transcript that goes straight to the model costs a call
+ * exactly the words this app cares about ("snake_case", "numeric", column
+ * names), and a wrong transcript that goes straight to the model costs a call
  * and produces a proposal you then have to reject.
  *
  * TypeScript 5.9's lib.dom does not declare this API, so the slice we use is
@@ -63,7 +63,7 @@ function getConstructor(): SpeechRecognitionConstructor | null {
 
 /**
  * Errors worth stopping for. Chrome fires `no-speech` whenever you pause, and
- * `aborted` when we stop on purpose — restarting through those is what makes
+ * `aborted` when we stop on purpose. Restarting through those is what makes
  * continuous dictation work, so only these end the session.
  */
 const FATAL = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
@@ -83,7 +83,7 @@ function messageFor(error: string): string {
 }
 
 export type Dictation = {
-  /** False in browsers without the API — Firefox, mainly. Hide the button. */
+  /** False in browsers without the API: Firefox, mainly. Hide the button. */
   supported: boolean;
   listening: boolean;
   error: string | null;
@@ -93,7 +93,7 @@ export type Dictation = {
   stop: () => void;
 };
 
-/** Whether the browser has the API at all — it never changes, so nothing ever
+/** Whether the browser has the API at all. It never changes, so nothing ever
  *  needs to be notified of a change. */
 const subscribeToNothing = () => () => {};
 
@@ -130,7 +130,7 @@ export function useDictation(): Dictation {
     if (!Recognition || wanted.current) return;
 
     const instance = new Recognition();
-    // The app is English throughout — see the conventions in AGENTS.md.
+    // The app is English throughout, see the conventions in AGENTS.md.
     instance.lang = "en-US";
     instance.continuous = true;
     instance.interimResults = true;

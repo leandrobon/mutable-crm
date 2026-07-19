@@ -20,7 +20,7 @@ const TABLE = "rows_probe";
 let failures = 0;
 function check(label: string, pass: boolean, detail = "") {
   if (!pass) failures++;
-  console.log(`${pass ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
+  console.log(`${pass ? "ok  " : "FAIL"} ${label}${detail ? `: ${detail}` : ""}`);
 }
 
 /**

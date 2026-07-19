@@ -69,7 +69,7 @@ function planOneTable(
     if (RESERVED_COLUMNS.includes(column.name as "id")) {
       return {
         ok: false,
-        reason: `"${column.name}" is added automatically — it cannot be listed as a column of "${tableName}".`,
+        reason: `"${column.name}" is added automatically, so it cannot be listed as a column of "${tableName}".`,
       };
     }
     if (seen.has(column.name)) {
@@ -134,7 +134,7 @@ export function planMigration(
         );
         // One bad table rejects the whole request. These are created in a
         // single transaction, so there is no such thing as applying the good
-        // half — and a partial CRM is worse than a clear refusal.
+        // half, and a partial CRM is worse than a clear refusal.
         if (!planned.ok) return planned;
 
         taken.add(table.tableName);
@@ -154,12 +154,12 @@ export function planMigration(
               : `Create ${tables.length} tables: ${names.join(", ")}.`,
           impact: [
             tables.length === 1
-              ? "No existing data is affected — this is a new table."
-              : "No existing data is affected — these are new tables.",
+              ? "No existing data is affected: this is a new table."
+              : "No existing data is affected: these are new tables.",
             // Only worth listing per table when there are several. For one, the
             // summary above already says exactly this.
             ...(tables.length > 1
-              ? tables.map((t) => `${t.tableName} — ${fieldsPhrase(t.columns)}.`)
+              ? tables.map((t) => `${t.tableName}: ${fieldsPhrase(t.columns)}.`)
               : []),
             tables.length === 1
               ? "An id primary key and a created_at timestamp are added automatically."
@@ -182,7 +182,7 @@ export function planMigration(
       };
     }
 
-    // The single-table form. Not offered to the model — kept so a history row
+    // The single-table form. Not offered to the model, kept so a history row
     // holding arguments in this shape can still be re-planned. See tools.ts.
     case "createTable": {
       const { tableName, columns } = call.args;
@@ -197,7 +197,7 @@ export function planMigration(
           args: call.args,
           summary: `Create a table "${tableName}" with ${fieldsPhrase(columns)}.`,
           impact: [
-            "No existing data is affected — this is a new table.",
+            "No existing data is affected: this is a new table.",
             "An id primary key and a created_at timestamp are added automatically.",
           ],
           upSql: planned.sql,
@@ -285,7 +285,7 @@ export function planMigration(
           args: call.args,
           summary: `Rename "${from}" to "${to}" on "${tableName}".`,
           impact: [
-            `${rowsPhrase(rowCount)} No values change — only the name of the field.`,
+            `${rowsPhrase(rowCount)} No values change, only the name of the field.`,
           ],
           upSql: `ALTER TABLE ${ident(tableName)} RENAME COLUMN ${ident(
             from,

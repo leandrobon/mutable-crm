@@ -65,7 +65,7 @@ type Coerced = { ok: true; value: CellValue } | { ok: false; reason: string };
  *
  * We validate here rather than letting the cast fail in the database, so a
  * mistyped number comes back as a sentence instead of a driver error. An empty
- * input means null — in a form there is no way to type "absent" otherwise.
+ * input means null: in a form there is no way to type "absent" otherwise.
  */
 export function coerce(column: Column, input: unknown): Coerced {
   const empty =
