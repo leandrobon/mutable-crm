@@ -26,7 +26,35 @@ Guidelines:
 
 If the request is ambiguous, would need an operation you do not have, or is not
 about the schema at all, reply in plain text instead of choosing an operation.
-Be brief. Answer in the language the user wrote in.`;
+Be brief. Answer in the language the user wrote in.
+
+You are in a conversation. When a message only makes sense as a reply to your
+previous one — a list of column names after you asked which columns to create —
+read it as that reply, not as a fresh request.
+
+Earlier proposals appear in the transcript as [proposed ...] lines, with whether
+the user applied them. A proposal that is still pending was not applied: the
+schema below does not include it.`;
+
+/** The schema goes in the system prompt, not in the messages: it is rebuilt on
+ *  every call, so the model always reads the current one. Kept in a message it
+ *  would be a snapshot, and a long conversation would carry several
+ *  contradictory versions of the same database. */
+function systemPrompt(schema: DbSchema): string {
+  return `${SYSTEM_PROMPT}
+
+Current database schema:
+
+${formatSchemaForPrompt(schema)}`;
+}
+
+/** One past turn, flattened to text. Proposals are rendered as [proposed ...]
+ *  rather than replayed as tool_use blocks — the model needs to know what it
+ *  offered and what became of it, not to re-issue the call, and this avoids
+ *  threading tool ids through the client for no gain. */
+export type Turn = { role: "user" | "assistant"; text: string };
+
+const MAX_TURNS = 24;
 
 /**
  * What came back from the model: either an operation to propose, or plain text
@@ -69,21 +97,27 @@ function textOf(content: Anthropic.ContentBlock[]): string {
 export async function proposeChange(
   userMessage: string,
   schema: DbSchema,
+  history: Turn[] = [],
 ): Promise<ProposeResult> {
+  // Only the tail: the schema in the system prompt already carries everything
+  // the older turns established, so dropping them loses conversational thread,
+  // not facts.
+  const recent = history.slice(-MAX_TURNS);
+
+  // The API rejects a leading assistant message, which is what a truncation
+  // mid-exchange can leave behind.
+  while (recent.length > 0 && recent[0].role === "assistant") recent.shift();
+
   const response = await getClient().messages.create({
     model: MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
-    system: SYSTEM_PROMPT,
+    system: systemPrompt(schema),
     tools: [...TOOL_DEFINITIONS] as unknown as Anthropic.Tool[],
     tool_choice: { type: "auto" },
     messages: [
-      {
-        role: "user",
-        content: `Current database schema:\n\n${formatSchemaForPrompt(
-          schema,
-        )}\n\nRequest: ${userMessage}`,
-      },
+      ...recent.map((turn) => ({ role: turn.role, content: turn.text })),
+      { role: "user" as const, content: userMessage },
     ],
   });
 

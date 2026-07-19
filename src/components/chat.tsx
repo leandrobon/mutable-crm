@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apply, propose, type ProposeResponse } from "@/app/actions";
+import type { Turn } from "@/lib/migrations/propose";
 import type { Proposal } from "@/lib/migrations/sql";
 import type { ToolCall } from "@/lib/migrations/tools";
 
@@ -33,6 +34,37 @@ const EXAMPLES = [
   "I want to track deals, with a title and an amount",
 ];
 
+/**
+ * The rendered conversation, flattened into what the model needs to read it.
+ *
+ * A proposal is not text on screen, but leaving it out would make the
+ * transcript lie: the model would see itself answer a request with nothing.
+ * Its status matters too — "you offered this and the user has not applied it"
+ * and "this is now in the schema" lead to different next moves.
+ */
+function transcriptOf(entries: Entry[]): Turn[] {
+  return entries.map((entry): Turn => {
+    switch (entry.kind) {
+      case "user":
+        return { role: "user", text: entry.text };
+      case "assistant":
+        return { role: "assistant", text: entry.text };
+      case "rejected":
+        return {
+          role: "assistant",
+          text: `[proposal refused by the application: ${entry.reason}]`,
+        };
+      case "proposal":
+        return {
+          role: "assistant",
+          text: `[proposed ${entry.proposal.toolName}: ${entry.proposal.summary} — ${
+            entry.status === "applied" ? "applied by the user" : "not applied yet"
+          }]`,
+        };
+    }
+  });
+}
+
 export function Chat() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [input, setInput] = useState("");
@@ -53,12 +85,17 @@ export function Chat() {
     const text = message.trim();
     if (!text || isProposing) return;
 
+    // Everything on screen before this message. `entries` is current here:
+    // `send` runs from an event handler, and `isProposing` blocks a second
+    // send before the first has rendered its result.
+    const history = transcriptOf(entries);
+
     setEntries((prev) => [...prev, { kind: "user", text }]);
     setInput("");
     scrollDown();
 
     startProposing(async () => {
-      const response: ProposeResponse = await propose(text);
+      const response: ProposeResponse = await propose(text, history);
 
       setEntries((prev) => {
         switch (response.kind) {

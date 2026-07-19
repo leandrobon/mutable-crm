@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
-import { proposeChange } from "@/lib/migrations/propose";
+import { proposeChange, type Turn } from "@/lib/migrations/propose";
 import { planMigration, type Proposal } from "@/lib/migrations/sql";
 import { applyMigration } from "@/lib/migrations/apply";
 import { isToolName, toolSchemas, type ToolCall } from "@/lib/migrations/tools";
@@ -29,7 +29,27 @@ async function rowCount(tableName: string): Promise<number> {
  * Asks the model what change the message describes and turns it into a
  * proposal. Nothing is applied here.
  */
-export async function propose(message: string): Promise<ProposeResponse> {
+/**
+ * The transcript arrives from the client, so it is shaped here before the model
+ * sees it. It only ever becomes conversational context — the tool call the
+ * model returns is validated on its own, and `apply` re-plans from the live
+ * schema — so a doctored history cannot widen what this server will execute.
+ */
+function sanitizeHistory(history: unknown): Turn[] {
+  if (!Array.isArray(history)) return [];
+  return history.flatMap((turn): Turn[] => {
+    if (typeof turn?.text !== "string") return [];
+    const text = turn.text.trim().slice(0, 4000);
+    if (!text) return [];
+    if (turn.role !== "user" && turn.role !== "assistant") return [];
+    return [{ role: turn.role, text }];
+  });
+}
+
+export async function propose(
+  message: string,
+  history: Turn[] = [],
+): Promise<ProposeResponse> {
   const trimmed = message.trim();
   if (!trimmed) return { kind: "message", text: "Say what you'd like to change." };
 
@@ -37,7 +57,7 @@ export async function propose(message: string): Promise<ProposeResponse> {
 
   let result;
   try {
-    result = await proposeChange(trimmed, schema);
+    result = await proposeChange(trimmed, schema, sanitizeHistory(history));
   } catch (err) {
     return {
       kind: "message",
