@@ -42,12 +42,13 @@ export function CrmView({ tables }: { tables: TableData[] }) {
     ? selected
     : tables[0]?.table.name ?? null;
 
-  useEffect(() => {
-    if (name !== selected) {
-      setSelected(name);
-      setPage(0);
-    }
-  }, [name, selected]);
+  // Adjusted during render, not in an effect: React re-runs this component
+  // immediately without committing the first result, so nothing downstream ever
+  // sees the stale entity. An effect would paint the wrong table for a frame.
+  if (name !== selected) {
+    setSelected(name);
+    setPage(0);
+  }
 
   const reload = useCallback(async () => {
     if (!name) return;
@@ -58,7 +59,12 @@ export function CrmView({ tables }: { tables: TableData[] }) {
     if (fresh && fresh.page !== page) setPage(fresh.page);
   }, [name, page]);
 
+  // Genuine synchronisation with an external system: the rows for this entity
+  // and page are fetched from the server. `reload` sets state only after its
+  // await, never synchronously in the effect body, which the lint rule cannot
+  // see past — hence the targeted exception rather than a restructure.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
   }, [reload, tables]);
 

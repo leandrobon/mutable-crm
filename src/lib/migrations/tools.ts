@@ -52,11 +52,11 @@ export const toolSchemas = {
   }),
 
   /**
-   * Superseded by `createTables` and no longer offered to the model — see
-   * TOOL_DEFINITIONS. It stays here because `_meta.migrations` rows written
-   * before the change store arguments in this shape, and `describeRevert()`
-   * parses those arguments to say what undoing them would do. Removing it would
-   * not break anything, it would just make older history entries unreadable.
+   * The single-table form. Not offered to the model — `createTables` covers it
+   * with an array of one, and two overlapping tools would only give the model a
+   * pointless choice to get wrong. It stays here so `_meta.migrations` rows
+   * holding arguments in this shape can still be parsed: `describeRevert()`
+   * reads them to say what undoing such a migration would do.
    */
   createTable: z.object({
     tableName: IDENTIFIER,

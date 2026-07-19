@@ -2,10 +2,9 @@
  * Round-trips every operation against a table that has data in it:
  * plan -> apply up -> verify -> apply down -> verify the schema is back.
  *
- * Creates its own table and drops it again, so it runs on an empty database and
- * never touches the user's data. It used to run against a hand-made `contacts`
- * table that existed only in whichever database you happened to have, which
- * meant `npm run db:reset` silently broke it.
+ * Creates its own table and drops it again, so it runs on an empty database,
+ * never touches the user's data, and depends on no fixture that has to be set
+ * up by hand.
  */
 import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
@@ -215,9 +214,9 @@ async function main() {
     },
   });
 
-  // Still re-plannable, so a history row written before createTables existed
-  // can still be read back and reversed.
-  await roundTrip("createTable (legacy shape) still plans", {
+  // The unoffered single-table form still plans, so a history row holding
+  // arguments in that shape can be read back and reversed.
+  await roundTrip("createTable (single-table form) still plans", {
     name: "createTable",
     args: {
       tableName: "invoices",

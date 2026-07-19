@@ -29,9 +29,10 @@ If a change you're about to make violates either one, stop and say so.
 
 ## The technical detail everything rests on
 
-**We never ask the LLM for free-form SQL.** We define typed tools (`createTable`,
-`addColumn`, `renameColumn`, `changeColumnType`), pass it the current schema as
-context, and **our code generates the SQL** from the chosen tool and its arguments.
+**We never ask the LLM for free-form SQL.** We define typed tools
+(`createTables`, `addColumn`, `renameColumn`, `changeColumnType`), pass it the
+current schema as context, and **our code generates the SQL** from the chosen
+tool and its arguments.
 
 This buys three things:
 
@@ -42,7 +43,8 @@ This buys three things:
   second model call: cheaper, and it cannot contradict the SQL it describes.
 
 When adding a new operation: the typed tool first, then the SQL generator, then
-the reverse generator. In that order.
+the reverse generator. In that order. A migration without a reverse does not get
+to exist.
 
 ## Stack
 
@@ -69,8 +71,8 @@ The short version:
 src/db/               connection + internal _meta tables
 src/lib/schema/       reading the live database
 src/lib/rows/         reading + writing the data inside it (not migrations)
-src/lib/migrations/   the engine: tools, model call, SQL generation
-scripts/              dev utilities + the regression suite
+src/lib/migrations/   the engine: tools, model call, SQL generation, undo
+scripts/              dev utilities + the regression suites
 migrations/           generated .sql files, one per applied migration
 ```
 
@@ -78,14 +80,10 @@ Important convention: **user entities live in `public`, internal tables in
 `_meta`.** Introspection reads only `public`, so it never sees its own tables.
 Don't move anything between schemas without updating introspection.
 
-Run `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts`
-after any change to `sql.ts` or `introspect.ts`, and `scripts/test-rows.ts` after
-any change to `rows/mutate.ts` or `rows/read.ts`.
-
-One constraint that typecheck will not catch: `src/lib/rows/cells.ts` must not
-import anything that reaches `@/db`. Both views are client components and import
-it to render, so a database import there pulls `pg` into the browser bundle and
-the build fails.
+One constraint that typecheck will not catch: **`src/lib/rows/cells.ts` and
+`src/lib/migrations/revert.ts` must not import anything that reaches `@/db`.**
+Client components import both to render, so a database import there pulls `pg`
+into the browser bundle and the build fails.
 
 ## Commands
 
@@ -97,7 +95,7 @@ npm run db:psql    # psql shell inside the container
 npm run dev
 ```
 
-**Starting from an empty database:**
+Starting from an empty database:
 
 ```bash
 npm run db:reset && npm run db:init
@@ -110,15 +108,26 @@ the database does not have.
 
 `db:up` and `db:reset` pass `--wait`, so Compose blocks on the healthcheck.
 Without it, a fresh volume runs `initdb` before accepting connections and the
-next command fails with `Connection terminated unexpectedly` — a race that only
-appears after a wipe, because an existing data directory starts fast enough to
-hide it.
+next command fails with `Connection terminated unexpectedly`.
 
-**The suites need no fixture.** Each one creates its own table, seeds it, and
-drops it at the end, so they pass on a completely empty database and leave it as
-they found it. They used to run against a hand-made `contacts` table that
-existed only in whichever database you happened to have, which meant `db:reset`
-silently broke them.
+## Tests
+
+```bash
+npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts
+npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-rows.ts
+npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts
+```
+
+| Run it after changing | Suite |
+|---|---|
+| `sql.ts`, `introspect.ts` | `test-migrations.ts` |
+| `rows/mutate.ts`, `rows/read.ts` | `test-rows.ts` |
+| `revert.ts`, `apply.ts` | `test-undo.ts` |
+| `tools.ts`, `propose.ts` | `test-end-to-end.ts` — **costs API credits** |
+
+Each suite creates its own table, seeds it, and drops it at the end, so they run
+on an empty database and leave it as they found it. None of them except
+`test-end-to-end.ts` calls the model.
 
 ## Conventions
 
@@ -128,79 +137,66 @@ silently broke them.
 - Every operation must work **with data in the tables**. Test against populated
   tables: an `ALTER TYPE` on an empty table proves nothing.
 
-## v0 scope (three days)
+## Scope
 
 Exactly four **schema** operations: create tables, add column, rename column,
 change column type. Nothing else.
 
 **Creating tables is plural.** `createTables` takes an array, so "a CRM to track
-my farm" becomes one tool call, one proposal, one migration and one undo,
-instead of a stack of them. A single table is an array of one — there is no
-singular version of the tool. This is still four operations, not five.
-
-Two consequences worth keeping in mind:
+my farm" becomes one tool call, one proposal, one migration and one undo, instead
+of a stack of them. A single table is an array of one — there is no singular
+version of the tool offered to the model. This is four operations, not five.
 
 - **One bad table rejects the whole request.** They are created in a single
-  transaction, so there is no applying the good half. A partial CRM is worse
-  than a clear refusal.
+  transaction, so there is no applying the good half.
 - **The batch is capped** (`MAX_TABLES_PER_REQUEST`). Not a database limit — a
   review limit. Applying is a user action and rule 1 assumes the user *reads*
   what they apply; a twenty-table proposal gets approved by scrolling.
 
-`createTable` (singular) still exists in `toolSchemas` but is not offered to the
-model. It is there so history rows written before the change can still be read
-and reversed.
+`createTable` (singular) exists in `toolSchemas` but is not offered to the model,
+so history rows written in that shape can still be read and reversed.
 
-Editing rows — add, edit, delete a record from the CRM view — is in scope and
-built. It does not widen the four operations: it is data, not schema. No
-proposal, no migration, no model, no `_meta.migrations` row. The tool vocabulary
-is still the security boundary for everything the model can reach, and the model
-cannot reach this.
+**Undo** runs the reverse a migration was stored with, from the History tab. It
+adds no tool and the model is not involved — undoing is a user action on a row of
+`_meta.migrations`, the way editing a record is a user action on a row of a
+table. Two properties to preserve:
+
+- **It is last-in-first-out.** Only the newest migration still in effect can be
+  undone. That is what makes it safe without a dependency graph, and the check
+  that enforces it runs inside the transaction, not in the UI.
+- **It restores the schema, never the values.** Undoing an `addColumn` drops the
+  column and everything typed into it. `describeRevert()` marks those destructive
+  and the UI takes a second click.
+
+**Editing rows** — add, edit, delete a record from the CRM view — is data, not
+schema. No proposal, no migration, no model, no `_meta.migrations` row. The tool
+vocabulary is still the security boundary for everything the model can reach, and
+the model cannot reach this.
+
+**Voice is dictation only.** The browser's Web Speech API turns speech into text
+that fills the chat box, and the user still presses Send. The model never
+receives audio — the Claude API has no `audio_input` capability and no
+transcription endpoint — so this adds no provider, no key, and no new path to the
+tools.
+
+**There are no relationships between tables.** There is no foreign key tool, so
+the prompt tells the model to express a reference as a plain integer column
+(`animal_id`) and to say in its reply that nothing enforces it. The schema a user
+gets can imply relationships it does not enforce, and the model's reply is the
+only place that gap is disclosed.
 
 Explicitly out: authentication, multi-tenant, RLS, permissions, production,
 importing from other CRMs. Don't add them even if they look easy — they add
 complexity without touching the core idea.
 
-Voice is in and is dictation only: the browser's Web Speech API turns speech
-into text that fills the chat box, and the user still presses Send. The model
-never receives audio — the Claude API has no `audio_input` capability and no
-transcription endpoint — so this adds no provider, no key, and no new path to
-the tools.
+## If you extend it
 
-## v1 (in progress)
-
-**Undo — built.** The History tab lists every applied migration and runs the
-reverse it was stored with. It adds no tool and the model is not involved:
-undoing is a user action on a row of `_meta.migrations`, the way editing a
-record is a user action on a row of a table. Two things to know before touching
-it, both explained in `docs/ARCHITECTURE.md` → "Undo":
-
-- **It is last-in-first-out.** Only the newest migration still in effect can be
-  undone. That is what makes it safe without a dependency graph, and the check
-  that enforces it runs inside the transaction, not in the UI.
-- **It restores the schema, never the values.** Undoing an `addColumn` drops
-  the column and everything typed into it. `describeRevert()` marks those
-  destructive and the UI takes a second click.
-
-Run `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts`
-after any change to `revert.ts` or `apply.ts`.
-
-**Multi-table creation — built.** See `createTables` under v0 scope above.
-
-Dropped from v1 deliberately: drop column, relations between entities, a real
-CRM seed. Not "not yet" — decided against for this version.
-
-**The relations gap is now visible to users**, and that is the main thing to
-know if you pick relations up later. A generated farm CRM has `field_id` on
-`crops` because the model was told to express references as plain integer
-columns; nothing enforces that the id points at a row that exists, and nothing
-cascades when the target is deleted. The prompt requires the model to say so out
-loud when it designs one. If you add foreign keys, that instruction goes stale
-and the `createTables` reverse has to drop tables in an order that respects
-them — it already drops in reverse creation order for exactly this reason.
-
-**Drop column is the first destructive tool.** Today the security story is that
+**Drop column would be the first destructive tool.** The security story is that
 deletion is *absent* from the vocabulary, not disabled — that is the boundary.
 Adding `dropColumn` changes the claim, and its reverse cannot restore the data,
-only the column. Decide what `down_sql` means there before building it, and keep
-the order: typed tool, then SQL generator, then reverse generator.
+only the column. Decide what `down_sql` means there before building it.
+
+**Foreign keys would make two things stale**: the prompt paragraph telling the
+model that references are not enforced, and the assumption that tables can be
+dropped in any order. The `createTables` reverse already drops in reverse
+creation order for that reason.

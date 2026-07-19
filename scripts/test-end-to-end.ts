@@ -140,10 +140,10 @@ async function main() {
 
   // --- put it back, through the same undo the History tab calls ---
   //
-  // This runs revertMigration() rather than executing down_sql by hand. Doing it
-  // by hand is what this script used to do, and it made the one script that
-  // covers the whole real path the one script that never touched the undo code:
-  // it would have kept passing with undo completely broken.
+  // Deliberately revertMigration() rather than executing down_sql by hand:
+  // running the SQL directly would leave the one script that covers the whole
+  // real path as the one script that never touches the undo code, and it would
+  // keep passing with undo completely broken.
   console.log("=== reverting through revertMigration ===");
 
   const reverting = await revertMigration(record!.id);

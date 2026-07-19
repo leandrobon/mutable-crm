@@ -194,14 +194,15 @@ proposal is one migration: one review card, one apply, one `_meta.migrations`
 row, one `.sql` file, one entry in the History tab. Letting the model emit
 several tool calls would break that assumption in all of them at once, and undo
 being last-in-first-out would turn "undo my farm CRM" into six clicks in the
-right order. A plural tool keeps every one of those files untouched — the only
-code that changed was the two places reading `args.tableName`.
+right order. A plural tool leaves every one of those layers untouched: the only
+place the shape matters is the two spots that read `args.tableName`, which is
+absent on this tool and handled by `subjectTable()`.
 
-**It is still four operations.** There is no singular `createTable` offered to
-the model; one table is an array of one. Having both would make the model choose
-between overlapping tools for no benefit. The singular schema does remain in
-`toolSchemas`, unoffered, so `describeRevert()` can still read history rows
-written before the change — `planMigration` keeps its case for the same reason.
+**It is four operations, not five.** There is no singular `createTable` offered
+to the model; one table is an array of one. Having both would make the model
+choose between overlapping tools for no benefit. The singular schema does remain
+in `toolSchemas`, unoffered, so `describeRevert()` can read history rows holding
+arguments in that shape — `planMigration` keeps its case for the same reason.
 
 **All or nothing.** `planOneTable()` validates each table, and the first
 rejection rejects the whole request. They are created in a single transaction,
@@ -224,7 +225,7 @@ to say in its reply that nothing enforces them. The schema the user gets implies
 relationships it does not enforce, and the reply is the only place that gap is
 disclosed.
 
-## Undo (v1)
+## Undo
 
 Undo runs the reverse that was stored when the migration was applied. It adds no
 tool and the model is not involved — undoing is a user action on a row of

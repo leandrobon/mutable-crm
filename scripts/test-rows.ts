@@ -3,10 +3,9 @@
  * populated table, numeric(10,2) surviving the round trip, the validation
  * rejections, page clamping, and the identifier boundary.
  *
- * Creates its own table and drops it again, so it runs on an empty database and
- * never touches the user's data. It used to run against a hand-made `contacts`
- * table that existed only in whichever database you happened to have, which
- * meant `npm run db:reset` silently broke it.
+ * Creates its own table and drops it again, so it runs on an empty database,
+ * never touches the user's data, and depends on no fixture that has to be set
+ * up by hand.
  *
  * No model, no API credits.
  */

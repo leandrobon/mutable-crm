@@ -182,8 +182,8 @@ export function planMigration(
       };
     }
 
-    // Legacy: no longer offered to the model, kept so a history row written
-    // before createTables can still be re-planned. See tools.ts.
+    // The single-table form. Not offered to the model — kept so a history row
+    // holding arguments in this shape can still be re-planned. See tools.ts.
     case "createTable": {
       const { tableName, columns } = call.args;
 

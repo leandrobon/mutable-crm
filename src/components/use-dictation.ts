@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 /**
  * Dictation via the browser's Web Speech API.
@@ -87,8 +93,21 @@ export type Dictation = {
   stop: () => void;
 };
 
+/** Whether the browser has the API at all — it never changes, so nothing ever
+ *  needs to be notified of a change. */
+const subscribeToNothing = () => () => {};
+
 export function useDictation(): Dictation {
-  const [supported, setSupported] = useState(false);
+  // Read through useSyncExternalStore rather than an effect: the server has no
+  // Web Speech API and must render the button as unsupported, while the client
+  // knows the answer on the first render. This gives each side its own snapshot
+  // with no hydration mismatch and no state to set after mount.
+  const supported = useSyncExternalStore(
+    subscribeToNothing,
+    () => getConstructor() !== null,
+    () => false,
+  );
+
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
@@ -98,11 +117,6 @@ export function useDictation(): Dictation {
   // was us or not, so we can start it again and let someone think mid-sentence.
   const wanted = useRef(false);
   const settled = useRef("");
-
-  // The API only exists in the browser, so this cannot run during render.
-  useEffect(() => {
-    setSupported(getConstructor() !== null);
-  }, []);
 
   useEffect(() => {
     return () => {
