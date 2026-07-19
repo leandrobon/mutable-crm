@@ -90,31 +90,35 @@ the build fails.
 ## Commands
 
 ```bash
-npm run db:up       # start postgres
-npm run db:init     # create the _meta schema (idempotent)
-npm run db:fixture  # recreate the contacts table the test suites need
-npm run db:reset    # drop the volume and start clean
-npm run db:psql     # psql shell inside the container
+npm run db:up      # start postgres (waits until it accepts connections)
+npm run db:init    # create the _meta schema (idempotent)
+npm run db:reset   # drop the volume and start clean
+npm run db:psql    # psql shell inside the container
 npm run dev
 ```
 
-**Starting from an empty database** — the three commands go together, and the
-`migrations/` files are part of the state:
+**Starting from an empty database:**
 
 ```bash
-npm run db:reset && npm run db:init && npm run db:fixture
+npm run db:reset && npm run db:init
 rm migrations/*.sql          # keep .gitkeep
 ```
 
-`db:reset` destroys the volume, so it takes the `contacts` fixture with it.
-`db:fixture` puts it back: the regression suites hardcode that table, and
-without it they fail on a clean database for reasons that look like real bugs.
-Delete the `.sql` files in the same breath — they describe migrations that the
-new database has no history rows for, and leaving them makes the folder claim a
-past the database does not have.
+Delete the `.sql` files in the same breath — they describe migrations the new
+database has no history rows for, and leaving them makes the folder claim a past
+the database does not have.
 
-To test the app itself from nothing (no `contacts`, no `leads`), skip
-`db:fixture` — just remember the suites will not pass until you run it.
+`db:up` and `db:reset` pass `--wait`, so Compose blocks on the healthcheck.
+Without it, a fresh volume runs `initdb` before accepting connections and the
+next command fails with `Connection terminated unexpectedly` — a race that only
+appears after a wipe, because an existing data directory starts fast enough to
+hide it.
+
+**The suites need no fixture.** Each one creates its own table, seeds it, and
+drops it at the end, so they pass on a completely empty database and leave it as
+they found it. They used to run against a hand-made `contacts` table that
+existed only in whichever database you happened to have, which meant `db:reset`
+silently broke them.
 
 ## Conventions
 

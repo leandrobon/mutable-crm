@@ -11,7 +11,6 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait",
     "db:init": "tsx --env-file=.env.local scripts/init-db.ts",
-    "db:fixture": "tsx --env-file=.env.local --tsconfig tsconfig.json scripts/seed-fixture.ts",
     "db:psql": "docker compose exec db psql -U crmllm -d crmllm"
   },
   "dependencies": {

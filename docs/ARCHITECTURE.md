@@ -135,6 +135,7 @@ and carries on rather than failing.
 |---|---|
 | `app/page.tsx` | Server component. Introspects, reads the rows and the migration history, renders the split screen. `dynamic = "force-dynamic"` because the schema can change on any request and a cached page would show a stale one. |
 | `app/actions.ts` | Every server action, in three groups. Schema: `propose(message, history)` and `apply(call)` — the only bridge between the browser and the engine. History: `revertChange(id)`. Records: `loadTable`, `createRecord`, `updateRecordCell`, `deleteRecord`, which re-introspect on each call so names are resolved against the live schema rather than trusted from the request. |
+| `components/workspace.tsx` | The split screen and the button that collapses the chat. Takes both halves as props so `page.tsx` can stay a server component and render them there. **The chat is hidden with CSS, never unmounted** — the conversation lives in `Chat`'s own state, so unmounting it would throw away every message and any proposal waiting to be applied. |
 | `components/panel.tsx` | The right-hand side, and the toggle between its three readings of the same database. The toggle changes the presentation, never the source. |
 | `components/history-view.tsx` | The History tab. Every applied migration newest first, its up and down SQL folded away, and an undo button on the single entry that is eligible. Entries below it say what is blocking them instead of offering a control that would be refused. |
 | `components/crm-view.tsx` | The non-technical view: entities down the side, records in the middle, edited in place. Cells become inputs on click; booleans are checkboxes and save immediately; new records are a draft row at the bottom. Deleting takes two clicks, because a row has no reverse the way a migration does. |
@@ -164,7 +165,6 @@ sync.
 | File | What it does |
 |---|---|
 | `init-db.ts` | Applies `meta.sql`. Idempotent. |
-| `seed-fixture.ts` | Recreates the `contacts` table the suites run against — **a test fixture, not a CRM seed**. `test-migrations.ts` and `test-rows.ts` hardcode its columns, its `numeric(10,2)` precision and its two rows, so on a freshly reset database they fail until this has run. Idempotent. If you change the shape here, run both suites. |
 | `introspect-dump.ts` | Prints what introspection currently sees, raw and as the model sees it. Useful when the schema changes under you. |
 | `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it — plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started — plus the rejection cases. No model, no API credits. Run it after any change to `sql.ts` or `introspect.ts`. |
 | `test-rows.ts` | The regression suite for row editing: insert, update, delete against a populated table, `numeric(10,2)` surviving the round trip, the validation rejections, page clamping, and the identifier boundary — a table or column name that is really a SQL fragment must be refused, not escaped. No model, no API credits. Run it after any change to `rows/mutate.ts` or `rows/read.ts`. |

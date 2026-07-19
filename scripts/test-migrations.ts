@@ -1,11 +1,24 @@
 /**
  * Round-trips every operation against a table that has data in it:
  * plan -> apply up -> verify -> apply down -> verify the schema is back.
+ *
+ * Creates its own table and drops it again, so it runs on an empty database and
+ * never touches the user's data. It used to run against a hand-made `contacts`
+ * table that existed only in whichever database you happened to have, which
+ * meant `npm run db:reset` silently broke it.
  */
 import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
 import { planMigration } from "@/lib/migrations/sql";
 import type { ToolCall } from "@/lib/migrations/tools";
+
+/** The table the alter operations run against. Named so it cannot collide with
+ *  anything the user made. Every table this suite creates is dropped again. */
+const TABLE = "migrations_probe";
+
+/** Created by the round trips below and removed at the end, in case a run dies
+ *  before its own `down` migration puts them back. */
+const CREATED_TABLES = ["deals", "invoices", "animals", "paddocks", "treatments"];
 
 let failures = 0;
 
@@ -121,8 +134,38 @@ async function expectRejection(label: string, call: ToolCall) {
   if (!result.ok) console.log(`  reason: ${result.reason}`);
 }
 
+/**
+ * The table the alter operations need: a column to rename, a numeric one to
+ * change the type of, and rows in both. An ALTER on an empty table proves
+ * nothing, which is why this seeds before it starts.
+ */
+async function setup() {
+  await cleanup();
+  await pool.query(`
+    CREATE TABLE ${TABLE} (
+      id         serial PRIMARY KEY,
+      email      text NOT NULL,
+      full_name  text,
+      score      numeric(10,2),
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`
+    INSERT INTO ${TABLE} (email, full_name, score) VALUES
+      ('ana@example.com', 'Ana Ruiz', 91.50),
+      ('bo@example.com',  'Bo Chen',  44.25);
+  `);
+}
+
+async function cleanup() {
+  for (const name of [TABLE, ...CREATED_TABLES]) {
+    await pool.query(`DROP TABLE IF EXISTS ${name}`);
+  }
+}
+
 async function main() {
-  console.log(`contacts has ${await rowCount("contacts")} rows\n`);
+  await setup();
+  console.log(`${TABLE} has ${await rowCount(TABLE)} rows\n`);
 
   await roundTrip("createTables, one table", {
     name: "createTables",
@@ -182,24 +225,24 @@ async function main() {
     },
   });
 
-  await roundTrip("addColumn contacts.company", {
+  await roundTrip("addColumn a column to the probe table", {
     name: "addColumn",
     args: {
-      tableName: "contacts",
+      tableName: TABLE,
       columnName: "company",
       type: "text",
       nullable: true,
     },
   });
 
-  await roundTrip("renameColumn contacts.full_name -> name", {
+  await roundTrip("renameColumn full_name -> name", {
     name: "renameColumn",
-    args: { tableName: "contacts", from: "full_name", to: "name" },
+    args: { tableName: TABLE, from: "full_name", to: "name" },
   });
 
-  await roundTrip("changeColumnType contacts.score numeric -> text", {
+  await roundTrip("changeColumnType score numeric -> text", {
     name: "changeColumnType",
-    args: { tableName: "contacts", columnName: "score", newType: "text" },
+    args: { tableName: TABLE, columnName: "score", newType: "text" },
   });
 
   await expectRejection("createTables listing the same table twice", {
@@ -228,7 +271,7 @@ async function main() {
           columns: [{ name: "kilos", type: "numeric", nullable: true }],
         },
         {
-          tableName: "contacts",
+          tableName: TABLE,
           columns: [{ name: "whatever", type: "text", nullable: true }],
         },
       ],
@@ -253,7 +296,7 @@ async function main() {
   await expectRejection("addColumn required, on a table with rows", {
     name: "addColumn",
     args: {
-      tableName: "contacts",
+      tableName: TABLE,
       columnName: "phone",
       type: "text",
       nullable: false,
@@ -262,27 +305,32 @@ async function main() {
 
   await expectRejection("renameColumn on a column that does not exist", {
     name: "renameColumn",
-    args: { tableName: "contacts", from: "nope", to: "whatever" },
+    args: { tableName: TABLE, from: "nope", to: "whatever" },
   });
 
   await expectRejection("changeColumnType to the type it already is", {
     name: "changeColumnType",
-    args: { tableName: "contacts", columnName: "email", newType: "text" },
+    args: { tableName: TABLE, columnName: "email", newType: "text" },
   });
 
   await expectRejection("renameColumn on the reserved id column", {
     name: "renameColumn",
-    args: { tableName: "contacts", from: "id", to: "contact_id" },
+    args: { tableName: TABLE, from: "id", to: "contact_id" },
   });
 
   console.log(
     failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`,
   );
-  await pool.end();
-  process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error(err);
+    failures++;
+  })
+  .then(async () => {
+    // Leaves the database as it found it, whether or not the checks passed.
+    await cleanup().catch(() => {});
+    await pool.end().catch(() => {});
+    process.exit(failures === 0 ? 0 : 1);
+  });
