@@ -1,5 +1,6 @@
 import { Chat } from "@/components/chat";
 import { Panel } from "@/components/panel";
+import { Workspace } from "@/components/workspace";
 import { introspectSchema } from "@/lib/schema/introspect";
 import { fetchAllTableData } from "@/lib/rows/read";
 import { listMigrations } from "@/lib/migrations/apply";
@@ -15,24 +16,12 @@ export default async function Home() {
   // exactly like the panel does, with no client-side copy to keep in sync.
   const history = await listMigrations();
 
+  // The two halves are rendered here, on the server, and handed to Workspace —
+  // it only decides how much room each one gets.
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-baseline gap-3 border-b px-6 py-3">
-        <h1 className="font-mono text-sm font-semibold">crmllm</h1>
-        <p className="text-xs text-muted-foreground">
-          The model proposes a change. You apply it. Every migration keeps its
-          reverse.
-        </p>
-      </header>
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,2fr)_3fr]">
-        <div className="min-h-0 border-b lg:border-b-0 lg:border-r">
-          <Chat />
-        </div>
-        <div className="min-h-0 bg-muted/30">
-          <Panel tables={tables} history={history} />
-        </div>
-      </div>
-    </div>
+    <Workspace
+      chat={<Chat />}
+      panel={<Panel tables={tables} history={history} />}
+    />
   );
 }
