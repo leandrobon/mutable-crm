@@ -100,11 +100,14 @@ async function main() {
   check("file was written", applied.fileWritten);
 
   const after = await introspectSchema();
+  const addedColumn =
+    "columnName" in proposal.args ? proposal.args.columnName : null;
   check(
     "column exists after apply",
-    after.tables
-      .find((t) => t.name === "contacts")!
-      .columns.some((c) => c.name === proposal.args.columnName),
+    Boolean(addedColumn) &&
+      after.tables
+        .find((t) => t.name === "contacts")!
+        .columns.some((c) => c.name === addedColumn),
   );
   check(
     "data survived",

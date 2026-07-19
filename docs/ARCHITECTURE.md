@@ -67,6 +67,7 @@ Everything about reading the database as it actually is.
 |---|---|
 | `types.ts` | `ALLOWED_TYPES` — the eight Postgres types we permit — plus the `Column` / `Table` / `DbSchema` shapes every other layer speaks in. The type list is a boundary: a type not on it cannot be requested. |
 | `introspect.ts` | `introspectSchema()` reads `public` from `information_schema` joined with `pg_catalog`. The `pg_catalog` half is what preserves `numeric(10,2)` precision — `information_schema` alone reports bare `numeric`, which would silently drop precision when generating a reverse migration. Also holds `formatSchemaForPrompt()`, which renders the schema as the compact text the model sees; it lives here because it is effectively part of the prompt. |
+| `rows.ts` | `fetchAllTableData()` reads the rows behind each table for the right-hand panel, and formats values for display. Table names reach a SQL string here, so each one is looked up in the introspected schema first — that lookup is what makes the interpolation safe. |
 
 This layer is why there is no hand-written UI per entity. Every table rendered
 on the right comes from `introspectSchema()`.
@@ -102,6 +103,27 @@ durable record is the `_meta.migrations` row, which stores the same `up_sql` and
 `down_sql`. A filesystem that refuses writes should not roll back a schema
 change that already succeeded, so `applyMigration` reports `fileWritten: false`
 and carries on rather than failing.
+
+### `src/app/` and `src/components/`
+
+| File | What it does |
+|---|---|
+| `app/page.tsx` | Server component. Introspects, reads the rows, renders the split screen. `dynamic = "force-dynamic"` because the schema can change on any request and a cached page would show a stale one. |
+| `app/actions.ts` | The two server actions: `propose(message)` and `apply(call)`. The only bridge between the browser and the engine. |
+| `components/entity-panel.tsx` | Server component. Renders every table from the schema. Contains nothing specific to any entity — this is the file that would not exist if the UI were hand-written per table. |
+| `components/chat.tsx` | The only client component. Message list, proposal cards with the SQL folded away, and the apply button. |
+
+**`apply` takes the tool call, not the SQL.** The browser sends back
+`{name, args}`; the server re-validates them and regenerates the SQL. Two
+reasons. First, a client cannot hand the server a statement to execute — the SQL
+that runs is always the SQL this server produced. Second, re-planning re-checks
+the change against the schema *as it is now*, so a proposal that went stale
+while it sat on screen is rejected cleanly instead of failing halfway through.
+
+After a successful apply the action calls `revalidatePath("/")` and the client
+calls `router.refresh()`, which re-runs the server component — the right-hand
+panel redraws from the new schema with no client-side schema state to keep in
+sync.
 
 ### `scripts/`
 
