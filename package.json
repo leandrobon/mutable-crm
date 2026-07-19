@@ -11,7 +11,12 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait",
     "db:init": "tsx --env-file=.env.local scripts/init-db.ts",
-    "db:psql": "docker compose exec db psql -U mutable-crm -d mutable-crm"
+    "db:psql": "docker compose exec db psql -U mutable-crm -d mutable-crm",
+    "test": "npm run test:migrations && npm run test:rows && npm run test:undo",
+    "test:migrations": "tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts",
+    "test:rows": "tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-rows.ts",
+    "test:undo": "tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts",
+    "test:e2e": "tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-end-to-end.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

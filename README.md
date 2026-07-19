@@ -91,9 +91,10 @@ Each creates its own table, seeds it with rows, and drops it afterwards, so they
 work on an empty database and leave it as they found it.
 
 ```bash
-npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts
-npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-rows.ts
-npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts
+npm test                  # all three, stopping at the first failure
+npm run test:migrations   # or one at a time
+npm run test:rows
+npm run test:undo
 ```
 
 They test against **populated** tables on purpose: an `ALTER TYPE` on an empty
@@ -103,8 +104,8 @@ started). `test-undo.ts` covers the ugly cases: out-of-order undo refused before
 any SQL runs, a reverse that no longer fits the data, undoing something already
 undone.
 
-A fourth, `scripts/test-end-to-end.ts`, runs the real model and **costs API
-credits**.
+A fourth, `npm run test:e2e`, runs the real model and **costs API credits**. It is
+deliberately left out of `npm test`.
 
 ## Stack
 
