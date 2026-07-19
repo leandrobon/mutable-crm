@@ -80,7 +80,7 @@ The engine. Four files, and the order they run in is the order they're listed.
 | `tools.ts` | The four typed operations — `createTable`, `addColumn`, `renameColumn`, `changeColumnType` — as Anthropic tool definitions with `strict: true`, plus Zod schemas for parsing the arguments back. **This file is the security boundary.** There is no `dropTable` or `dropColumn`; the model has no way to express the request. Also defines the identifier rule (lowercase snake_case, ≤63 chars) that keeps us from ever emitting a quoted identifier. |
 | `propose.ts` | Sends the schema and the tools to the model and returns either a validated `ToolCall` or plain text. The only file that talks to the Anthropic API. Contains no SQL and never asks for any. |
 | `sql.ts` | `planMigration(call, schema, rowCount)` → a `Proposal` (summary, impact, `upSql`, `downSql`) or a rejection with a plain-language reason. Pure — no database access — so every branch is directly testable. This is where the "must work with data in the table" rules live, e.g. refusing a required column on a populated table. |
-| `apply.ts` | *(not written yet)* Runs the SQL in a transaction and records the migration. |
+| `apply.ts` | `applyMigration(proposal)` runs the `up` SQL and inserts the history row in one transaction on a single checked-out connection. `listMigrations()` reads the history back. The `.sql` file is written after the commit, on purpose — see below. |
 
 **Two-pass validation, and the difference between them:**
 
@@ -92,23 +92,38 @@ The engine. Four files, and the order they run in is the order they're listed.
 
 Pass 1 stops nonsense. Pass 2 is what protects the database.
 
+**Transactions run on one connection.** `pool.query("BEGIN")` sends BEGIN to
+whatever connection the pool hands out, and the next statement can land on a
+different one — the transaction then covers nothing. Always `pool.connect()`,
+run the statements on that client, and `release()` in a `finally`.
+
+**The file is written after the commit, not inside the transaction.** The
+durable record is the `_meta.migrations` row, which stores the same `up_sql` and
+`down_sql`. A filesystem that refuses writes should not roll back a schema
+change that already succeeded, so `applyMigration` reports `fileWritten: false`
+and carries on rather than failing.
+
 ### `scripts/`
 
 | File | What it does |
 |---|---|
 | `init-db.ts` | Applies `meta.sql`. Idempotent. |
 | `introspect-dump.ts` | Prints what introspection currently sees, raw and as the model sees it. Useful when the schema changes under you. |
-| `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it — plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started — plus the rejection cases. Run it after any change to `sql.ts` or `introspect.ts`. |
+| `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it — plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started — plus the rejection cases. No model, no API credits. Run it after any change to `sql.ts` or `introspect.ts`. |
+| `test-end-to-end.ts` | The full path with the real model: request → tool choice → SQL → apply → history row and file → revert. **Costs API credits** — run it deliberately, not on every save. Run it after changing `tools.ts` or `propose.ts`, since those are what shape the model's judgment. |
 
 ### `migrations/`
 
 One `.sql` file per applied migration, holding both directions. Generated, never
 hand-written.
 
-Note: this directory does not work on Vercel, whose filesystem is read-only. The
-durable record is the `_meta.migrations` row, which stores the same `up_sql` and
-`down_sql`; the file is a developer-facing artifact. See the README's scope
-section — the project is meant to be run locally.
+The project runs locally from a cloned repo — there is no deployment — so these
+files are readable artifacts you can open, diff, and commit. They are the
+visible half of the "every migration has a reverse" rule.
+
+The `_meta.migrations` row holds the same `up_sql` and `down_sql` and is what
+undo will actually read, so the two are redundant by design: the row is the
+source of truth, the file is what a human looks at.
 
 ## Conventions
 

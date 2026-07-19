@@ -18,6 +18,22 @@ function check(label: string, condition: boolean, detail = "") {
   }
 }
 
+/** A transaction has to run on one checked-out connection — pool.query("BEGIN")
+ *  may put the following statements on a different connection entirely. */
+async function runInTransaction(sql: string) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(sql);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function rowCount(table: string): Promise<number> {
   const exists = await pool.query(
     `SELECT to_regclass($1) IS NOT NULL AS present`,
@@ -51,12 +67,9 @@ async function roundTrip(label: string, call: ToolCall) {
   console.log(`  up:   ${proposal.upSql.replace(/\n/g, "\n        ")}`);
   console.log(`  down: ${proposal.downSql}`);
 
-  await pool.query("BEGIN");
   try {
-    await pool.query(proposal.upSql);
-    await pool.query("COMMIT");
+    await runInTransaction(proposal.upSql);
   } catch (err) {
-    await pool.query("ROLLBACK");
     failures++;
     console.log(`  FAIL up failed — ${(err as Error).message}`);
     return;
@@ -73,12 +86,9 @@ async function roundTrip(label: string, call: ToolCall) {
     `${count} -> ${survived}`,
   );
 
-  await pool.query("BEGIN");
   try {
-    await pool.query(proposal.downSql);
-    await pool.query("COMMIT");
+    await runInTransaction(proposal.downSql);
   } catch (err) {
-    await pool.query("ROLLBACK");
     failures++;
     console.log(`  FAIL down failed — ${(err as Error).message}`);
     return;
