@@ -3,13 +3,14 @@
 A CRM whose schema you change by talking to it.
 
 <!-- TODO: record docs/demo.gif and drop it in here -->
-![demo](docs/demo.gif)
 
-You write *"contacts need a company field"*. The model proposes a structured
+[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/7609ac9acd2f4be0803b654f8b80708e-with-play.gif)](https://www.loom.com/share/7609ac9acd2f4be0803b654f8b80708e)
+
+You write _"contacts need a company field"_. The model proposes a structured
 change, you review it, you apply it, and the table re-renders itself from the
 live database schema. **There is no hand-written UI per entity**, and no code is
-generated or deployed. Ask for something broader (*"a CRM to keep track of my
-farm"*) and the whole set of tables arrives as one proposal.
+generated or deployed. Ask for something broader (_"a CRM to keep track of my
+farm"_) and the whole set of tables arrives as one proposal.
 
 ---
 
@@ -50,10 +51,10 @@ Every applied change is listed in a History tab and reversed with the `down_sql`
 it was stored with. Undo is **last-in-first-out**: only the newest change still
 in effect can be undone, because reverting migration N while N+1 builds on it
 would fail halfway or leave the schema somewhere neither migration describes.
-The eligibility check runs *inside* the transaction, so a stale page or two tabs
+The eligibility check runs _inside_ the transaction, so a stale page or two tabs
 racing cannot slip past it.
 
-Undo restores the *shape* of the schema, never the values: undoing an added
+Undo restores the _shape_ of the schema, never the values: undoing an added
 column drops everything written into it, so those undos are marked destructive
 and take a second click. A reverse that no longer fits the data fails loudly
 rather than destroying it. Change a `numeric` column to `text`, write `"n/a"`
@@ -131,7 +132,7 @@ deployment, importing from other CRMs. It is single-user and local.
 
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) documents every directory and file
 and why each exists, including why transactions must run on a single checked-out
-connection, and why the migration file is written *after* the commit.
+connection, and why the migration file is written _after_ the commit.
 
 ## License
 
