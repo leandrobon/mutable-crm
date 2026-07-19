@@ -10,7 +10,11 @@ import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
 import { proposeChange } from "@/lib/migrations/propose";
 import { planMigration } from "@/lib/migrations/sql";
-import { applyMigration, listMigrations } from "@/lib/migrations/apply";
+import {
+  applyMigration,
+  listMigrations,
+  revertMigration,
+} from "@/lib/migrations/apply";
 
 let failures = 0;
 
@@ -127,23 +131,16 @@ async function main() {
   check("file contains both directions", contents.includes("-- +up") && contents.includes("-- +down"));
   console.log(`\n--- ${applied.filename} ---\n${contents}`);
 
-  // --- put it back, using the stored reverse ---
-  console.log("=== reverting with the stored down_sql ===");
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(record!.downSql);
-    await client.query(`UPDATE _meta.migrations SET reverted_at = now() WHERE id = $1`, [
-      record!.id,
-    ]);
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    failures++;
-    console.log(`  FAIL revert failed — ${(err as Error).message}`);
-  } finally {
-    client.release();
-  }
+  // --- put it back, through the same undo the History tab calls ---
+  //
+  // This runs revertMigration() rather than executing down_sql by hand. Doing it
+  // by hand is what this script used to do, and it made the one script that
+  // covers the whole real path the one script that never touched the undo code:
+  // it would have kept passing with undo completely broken.
+  console.log("=== reverting through revertMigration ===");
+
+  const reverting = await revertMigration(record!.id);
+  check("revert succeeded", reverting.ok, reverting.ok ? "" : reverting.reason);
 
   const reverted = await introspectSchema();
   check(
@@ -151,6 +148,15 @@ async function main() {
     JSON.stringify(reverted) === JSON.stringify(before),
   );
   check("data still intact", (await rowCount("contacts")) === 2);
+
+  const afterRevert = (await listMigrations()).find((m) => m.id === record!.id);
+  check("the history row is stamped reverted", afterRevert?.revertedAt != null);
+
+  // The stack is now empty of this migration, so asking again must be refused
+  // rather than running the reverse a second time.
+  const twice = await revertMigration(record!.id);
+  check("undoing it again is refused", !twice.ok);
+  if (!twice.ok) console.log(`  reason: ${twice.reason}`);
 
   console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
   await pool.end();
