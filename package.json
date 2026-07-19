@@ -1,5 +1,5 @@
 {
-  "name": "crmllm",
+  "name": "mutable-crm",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,7 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait",
     "db:init": "tsx --env-file=.env.local scripts/init-db.ts",
-    "db:psql": "docker compose exec db psql -U crmllm -d crmllm"
+    "db:psql": "docker compose exec db psql -U mutable-crm -d mutable-crm"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

@@ -29,7 +29,7 @@ export function Workspace({
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex items-baseline gap-3 border-b px-6 py-3">
-        <h1 className="font-mono text-sm font-semibold">crmllm</h1>
+        <h1 className="font-mono text-sm font-semibold">mutable-crm</h1>
         <p className="hidden text-xs text-muted-foreground sm:block">
           The model proposes a change. You apply it. Every migration keeps its
           reverse.

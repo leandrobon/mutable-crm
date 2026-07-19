@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "crmllm",
+  title: "mutable-crm",
   description: "A CRM whose schema you change by talking to it.",
 };
 

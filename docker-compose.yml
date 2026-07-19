@@ -1,21 +1,21 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: crmllm-db
+    container_name: mutable-crm-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: crmllm
-      POSTGRES_PASSWORD: crmllm
-      POSTGRES_DB: crmllm
+      POSTGRES_USER: mutable-crm
+      POSTGRES_PASSWORD: mutable-crm
+      POSTGRES_DB: mutable-crm
     ports:
       - "5433:5432"
     volumes:
-      - crmllm-data:/var/lib/postgresql/data
+      - mutable-crm-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U crmllm -d crmllm"]
+      test: ["CMD-SHELL", "pg_isready -U mutable-crm -d mutable-crm"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  crmllm-data:
+  mutable-crm-data:

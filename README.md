@@ -1,4 +1,4 @@
-# crmllm
+# mutable-crm
 
 A CRM whose schema you change by talking to it.
 
