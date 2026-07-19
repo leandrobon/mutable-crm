@@ -113,17 +113,18 @@ next command fails with `Connection terminated unexpectedly`.
 ## Tests
 
 ```bash
-npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts
-npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-rows.ts
-npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts
+npm test                  # all three, stopping at the first failure
+npm run test:migrations   # or one at a time
+npm run test:rows
+npm run test:undo
 ```
 
 | Run it after changing | Suite |
 |---|---|
-| `sql.ts`, `introspect.ts` | `test-migrations.ts` |
-| `rows/mutate.ts`, `rows/read.ts` | `test-rows.ts` |
-| `revert-plan.ts`, `apply.ts` | `test-undo.ts` |
-| `tools.ts`, `propose.ts` | `test-end-to-end.ts` (**costs API credits**) |
+| `sql.ts`, `introspect.ts` | `npm run test:migrations` |
+| `rows/mutate.ts`, `rows/read.ts` | `npm run test:rows` |
+| `revert-plan.ts`, `apply.ts` | `npm run test:undo` |
+| `tools.ts`, `propose.ts` | `npm run test:e2e` (**costs API credits**) |
 
 Each suite creates its own table, seeds it, and drops it at the end, so they run
 on an empty database and leave it as they found it. None of them except
@@ -152,9 +153,6 @@ version of the tool offered to the model. This is four operations, not five.
 - **The batch is capped** (`MAX_TABLES_PER_REQUEST`). Not a database limit, a
   review limit. Applying is a user action and rule 1 assumes the user *reads*
   what they apply; a twenty-table proposal gets approved by scrolling.
-
-`createTable` (singular) exists in `toolSchemas` but is not offered to the model,
-so history rows written in that shape can still be read and reversed.
 
 **Undo** runs the reverse a migration was stored with, from the History tab. It
 adds no tool and the model is not involved. Undoing is a user action on a row of

@@ -102,7 +102,7 @@ The engine. Four files, and the order they run in is the order they're listed.
 
 | File | What it does |
 |---|---|
-| `tools.ts` | The four typed operations (`createTables`, `addColumn`, `renameColumn`, `changeColumnType`) as Anthropic tool definitions with `strict: true`, plus Zod schemas for parsing the arguments back. **This file is the security boundary.** There is no `dropTable` or `dropColumn`; the model has no way to express the request. Also defines the identifier rule (lowercase snake_case, ≤63 chars) that keeps us from ever emitting a quoted identifier, and the batch caps. Note `toolSchemas` lists five and `TOOL_DEFINITIONS` four. See "Creating several tables at once". |
+| `tools.ts` | The four typed operations (`createTables`, `addColumn`, `renameColumn`, `changeColumnType`) as Anthropic tool definitions with `strict: true`, plus Zod schemas for parsing the arguments back. **This file is the security boundary.** There is no `dropTable` or `dropColumn`; the model has no way to express the request. Also defines the identifier rule (lowercase snake_case, ≤63 chars) that keeps us from ever emitting a quoted identifier, and the batch caps. See "Creating several tables at once". |
 | `propose.ts` | Sends the schema and the tools to the model and returns either a validated `ToolCall` or plain text. The only file that talks to the Anthropic API. Contains no SQL and never asks for any. |
 | `sql.ts` | `planMigration(call, schema, rowCount)` → a `Proposal` (summary, impact, `upSql`, `downSql`) or a rejection with a plain-language reason. Pure (no database access), so every branch is directly testable. This is where the "must work with data in the table" rules live, e.g. refusing a required column on a populated table. |
 | `apply.ts` | `applyMigration(proposal)` runs the `up` SQL and inserts the history row in one transaction on a single checked-out connection. `listMigrations()` reads the history back, `revertMigration(id)` runs a stored reverse. The `.sql` file is written after the commit, on purpose. See below. |
@@ -198,11 +198,9 @@ right order. A plural tool leaves every one of those layers untouched: the only
 place the shape matters is the two spots that read `args.tableName`, which is
 absent on this tool and handled by `subjectTable()`.
 
-**It is four operations, not five.** There is no singular `createTable` offered
-to the model; one table is an array of one. Having both would make the model
-choose between overlapping tools for no benefit. The singular schema does remain
-in `toolSchemas`, unoffered, so `describeRevert()` can read history rows holding
-arguments in that shape, and `planMigration` keeps its case for the same reason.
+**It is four operations, not five.** There is no singular `createTable`; one
+table is an array of one. Having both would make the model choose between
+overlapping tools for no benefit.
 
 **All or nothing.** `planOneTable()` validates each table, and the first
 rejection rejects the whole request. They are created in a single transaction,
@@ -275,7 +273,7 @@ migration is still in effect and the error names the value that blocked it.
 
 **Undo restores the schema, never the values.** `addColumn` reverses to
 `DROP COLUMN`, which deletes everything anyone typed into that column;
-`createTable` reverses to `DROP TABLE`. `describeRevert()` marks those
+`createTables` reverses to `DROP TABLE`. `describeRevert()` marks those
 `destructive: true` and the UI requires a second click, the same convention as
 deleting a record. A migration argument that no longer parses also counts as
 destructive, because an unreadable change is not one to reassure anyone about.

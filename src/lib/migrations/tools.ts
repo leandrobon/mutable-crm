@@ -51,26 +51,6 @@ export const toolSchemas = {
     tables: z.array(TABLE_DEFINITION).min(1).max(MAX_TABLES_PER_REQUEST),
   }),
 
-  /**
-   * The single-table form. Not offered to the model, because `createTables` covers it
-   * with an array of one, and two overlapping tools would only give the model a
-   * pointless choice to get wrong. It stays here so `_meta.migrations` rows
-   * holding arguments in this shape can still be parsed: `describeRevert()`
-   * reads them to say what undoing such a migration would do.
-   */
-  createTable: z.object({
-    tableName: IDENTIFIER,
-    columns: z
-      .array(
-        z.object({
-          name: IDENTIFIER,
-          type: COLUMN_TYPE,
-          nullable: z.boolean(),
-        }),
-      )
-      .min(1),
-  }),
-
   addColumn: z.object({
     tableName: IDENTIFIER,
     columnName: IDENTIFIER,

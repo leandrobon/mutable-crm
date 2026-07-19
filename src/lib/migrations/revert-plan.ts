@@ -80,18 +80,6 @@ export function describeRevert(record: {
           };
         }
 
-        case "createTable": {
-          const { tableName } = parsed.data as { tableName: string };
-          return {
-            summary: `Drop the table "${tableName}".`,
-            impact: [
-              `The table and every record in it are deleted.`,
-              `Undoing this is not itself undoable: re-applying would create "${tableName}" empty.`,
-            ],
-            destructive: true,
-          };
-        }
-
         case "addColumn": {
           const { tableName, columnName } = parsed.data as {
             tableName: string;

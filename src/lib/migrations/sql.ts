@@ -28,9 +28,8 @@ type NewColumn = { name: string; type: string; nullable: boolean };
 /**
  * Validates one table definition and returns its CREATE statement.
  *
- * Shared by `createTables` and the legacy `createTable`, so the two cannot
- * drift: whatever a single table is checked for, each table in a batch is
- * checked for identically.
+ * Each table in a batch is checked identically, so nothing can drift between
+ * one table and the next.
  *
  * `alreadyTaken` carries the names claimed earlier in the same request. The
  * live schema cannot catch a batch that asks for the same table twice, because
@@ -166,30 +165,6 @@ export function planMigration(
             .reverse()
             .map((name) => `DROP TABLE ${ident(name)};`)
             .join("\n"),
-        },
-      };
-    }
-
-    // The single-table form. Not offered to the model, kept so a history row
-    // holding arguments in this shape can still be re-planned. See tools.ts.
-    case "createTable": {
-      const { tableName, columns } = call.args;
-
-      const planned = planOneTable(tableName, columns, schema, new Set());
-      if (!planned.ok) return planned;
-
-      return {
-        ok: true,
-        proposal: {
-          toolName: call.name,
-          args: call.args,
-          summary: `Create a table "${tableName}" with ${fieldsPhrase(columns)}.`,
-          impact: [
-            "No existing data is affected: this is a new table.",
-            "An id primary key and a created_at timestamp are added automatically.",
-          ],
-          upSql: planned.sql,
-          downSql: `DROP TABLE ${ident(tableName)};`,
         },
       };
     }

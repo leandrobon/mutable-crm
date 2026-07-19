@@ -100,12 +100,16 @@ async function main() {
   console.log("# setup");
 
   const createId = await applyStep({
-    name: "createTable",
+    name: "createTables",
     args: {
-      tableName: TABLE,
-      columns: [
-        { name: "title", type: "text", nullable: false },
-        { name: "score", type: "numeric", nullable: true },
+      tables: [
+        {
+          tableName: TABLE,
+          columns: [
+            { name: "title", type: "text", nullable: false },
+            { name: "score", type: "numeric", nullable: true },
+          ],
+        },
       ],
     },
   });

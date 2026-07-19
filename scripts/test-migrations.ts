@@ -99,7 +99,7 @@ async function roundTrip(label: string, call: ToolCall) {
 
   // Data must survive the forward migration. Creating tables is the exception:
   // there was nothing there to survive.
-  const creates = call.name === "createTable" || call.name === "createTables";
+  const creates = call.name === "createTables";
   const survived = subject ? await rowCount(subject) : 0;
   check(
     "rows survived the up migration",
@@ -211,16 +211,6 @@ async function main() {
           ],
         },
       ],
-    },
-  });
-
-  // The unoffered single-table form still plans, so a history row holding
-  // arguments in that shape can be read back and reversed.
-  await roundTrip("createTable (single-table form) still plans", {
-    name: "createTable",
-    args: {
-      tableName: "invoices",
-      columns: [{ name: "reference", type: "text", nullable: false }],
     },
   });
 
