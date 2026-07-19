@@ -2,7 +2,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pool } from "@/db";
 import type { Proposal } from "./sql";
-import type { MigrationRecord } from "./revert";
+import type { MigrationRecord } from "./revert-plan";
 
 export type { MigrationRecord };
 

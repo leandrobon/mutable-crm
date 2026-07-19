@@ -81,7 +81,7 @@ Important convention: **user entities live in `public`, internal tables in
 Don't move anything between schemas without updating introspection.
 
 One constraint that typecheck will not catch: **`src/lib/rows/cells.ts` and
-`src/lib/migrations/revert.ts` must not import anything that reaches `@/db`.**
+`src/lib/migrations/revert-plan.ts` must not import anything that reaches `@/db`.**
 Client components import both to render, so a database import there pulls `pg`
 into the browser bundle and the build fails.
 
@@ -122,7 +122,7 @@ npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts
 |---|---|
 | `sql.ts`, `introspect.ts` | `test-migrations.ts` |
 | `rows/mutate.ts`, `rows/read.ts` | `test-rows.ts` |
-| `revert.ts`, `apply.ts` | `test-undo.ts` |
+| `revert-plan.ts`, `apply.ts` | `test-undo.ts` |
 | `tools.ts`, `propose.ts` | `test-end-to-end.ts` (**costs API credits**) |
 
 Each suite creates its own table, seeds it, and drops it at the end, so they run

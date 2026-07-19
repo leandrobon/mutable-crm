@@ -5,7 +5,7 @@ import { CrmView } from "@/components/crm-view";
 import { EntityPanel } from "@/components/entity-panel";
 import { HistoryView } from "@/components/history-view";
 import type { TableData } from "@/lib/rows/cells";
-import type { MigrationRecord } from "@/lib/migrations/revert";
+import type { MigrationRecord } from "@/lib/migrations/revert-plan";
 
 type View = "crm" | "database" | "history";
 

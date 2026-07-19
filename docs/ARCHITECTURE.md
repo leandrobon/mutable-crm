@@ -106,7 +106,7 @@ The engine. Four files, and the order they run in is the order they're listed.
 | `propose.ts` | Sends the schema and the tools to the model and returns either a validated `ToolCall` or plain text. The only file that talks to the Anthropic API. Contains no SQL and never asks for any. |
 | `sql.ts` | `planMigration(call, schema, rowCount)` → a `Proposal` (summary, impact, `upSql`, `downSql`) or a rejection with a plain-language reason. Pure (no database access), so every branch is directly testable. This is where the "must work with data in the table" rules live, e.g. refusing a required column on a populated table. |
 | `apply.ts` | `applyMigration(proposal)` runs the `up` SQL and inserts the history row in one transaction on a single checked-out connection. `listMigrations()` reads the history back, `revertMigration(id)` runs a stored reverse. The `.sql` file is written after the commit, on purpose. See below. |
-| `revert.ts` | The undo half that touches no database: `MigrationRecord`, `describeRevert()` (what undoing a change does to the data, derived from the stored tool arguments) and `undoableId()` (which entry the UI may offer). See "Undo" below. |
+| `revert-plan.ts` | The undo half that touches no database: `MigrationRecord`, `describeRevert()` (what undoing a change does to the data, derived from the stored tool arguments) and `undoableId()` (which entry the UI may offer). See "Undo" below. |
 
 **Two-pass validation, and the difference between them:**
 
@@ -168,7 +168,7 @@ sync.
 | `introspect-dump.ts` | Prints what introspection currently sees, raw and as the model sees it. Useful when the schema changes under you. |
 | `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it (plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started), plus the rejection cases. No model, no API credits. Run it after any change to `sql.ts` or `introspect.ts`. |
 | `test-rows.ts` | The regression suite for row editing: insert, update, delete against a populated table, `numeric(10,2)` surviving the round trip, the validation rejections, page clamping, and the identifier boundary: a table or column name that is really a SQL fragment must be refused, not escaped. No model, no API credits. Run it after any change to `rows/mutate.ts` or `rows/read.ts`. |
-| `test-undo.ts` | The regression suite for undo. Builds a real three-migration stack on a populated scratch table, then walks back down it: out-of-order refused before any SQL, the reverse restoring the schema byte for byte, hand-written values surviving, a column drop taking its values but not its rows, and a reverse that no longer fits the data failing with nothing changed. Removes the table, the history rows and the `.sql` files it created, so it can be run repeatedly. No model, no API credits. Run it after any change to `revert.ts` or `apply.ts`. |
+| `test-undo.ts` | The regression suite for undo. Builds a real three-migration stack on a populated scratch table, then walks back down it: out-of-order refused before any SQL, the reverse restoring the schema byte for byte, hand-written values surviving, a column drop taking its values but not its rows, and a reverse that no longer fits the data failing with nothing changed. Removes the table, the history rows and the `.sql` files it created, so it can be run repeatedly. No model, no API credits. Run it after any change to `revert-plan.ts` or `apply.ts`. |
 | `test-end-to-end.ts` | The full path with the real model: request → tool choice → SQL → apply → history row and file → revert. **Costs API credits**, so run it deliberately, not on every save. Run it after changing `tools.ts` or `propose.ts`, since those are what shape the model's judgment. |
 
 ### `migrations/`
@@ -248,7 +248,7 @@ table.
 
 | File | What it does |
 |---|---|
-| `migrations/revert.ts` | Pure and database-free. Holds `MigrationRecord`, `describeRevert()` and `undoableId()`. **The type lives here, not in `apply.ts`**, because `history-view.tsx` is a client component and needs both. Importing them from `apply.ts` would pull `pg` into the browser bundle, the same constraint that governs `rows/cells.ts`. |
+| `migrations/revert-plan.ts` | Pure and database-free. Holds `MigrationRecord`, `describeRevert()` and `undoableId()`. **The type lives here, not in `apply.ts`**, because `history-view.tsx` is a client component and needs both. Importing them from `apply.ts` would pull `pg` into the browser bundle, the same constraint that governs `rows/cells.ts`. |
 | `migrations/apply.ts` → `revertMigration(id)` | The database half. One transaction on one connection. |
 | `components/history-view.tsx` | The History tab: every migration, its reverse folded away, and the undo button on the one entry that may be undone. |
 

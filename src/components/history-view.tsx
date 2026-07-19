@@ -15,7 +15,7 @@ import {
   describeRevert,
   undoableId,
   type MigrationRecord,
-} from "@/lib/migrations/revert";
+} from "@/lib/migrations/revert-plan";
 
 /**
  * The migration history, newest first, and the one place undo is offered.

@@ -15,7 +15,7 @@ import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
 import { planMigration } from "@/lib/migrations/sql";
 import { applyMigration, revertMigration } from "@/lib/migrations/apply";
-import { describeRevert, undoableId } from "@/lib/migrations/revert";
+import { describeRevert, undoableId } from "@/lib/migrations/revert-plan";
 import type { ToolCall } from "@/lib/migrations/tools";
 
 const TABLE = "undo_probe";
