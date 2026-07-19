@@ -2,7 +2,7 @@
 
 A CRM whose schema you change by talking to it.
 
-[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/7609ac9acd2f4be0803b654f8b80708e-with-play.gif)](https://www.loom.com/share/7609ac9acd2f4be0803b654f8b80708e)
+![demo](docs/demo.gif)
 
 You write _"contacts need a company field"_. The model proposes a structured
 change, you review it, you apply it, and the table re-renders itself from the
