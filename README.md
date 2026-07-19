@@ -2,8 +2,6 @@
 
 A CRM whose schema you change by talking to it.
 
-<!-- TODO: record docs/demo.gif and drop it in here -->
-
 [![Watch the demo](https://cdn.loom.com/sessions/thumbnails/7609ac9acd2f4be0803b654f8b80708e-with-play.gif)](https://www.loom.com/share/7609ac9acd2f4be0803b654f8b80708e)
 
 You write _"contacts need a company field"_. The model proposes a structured
