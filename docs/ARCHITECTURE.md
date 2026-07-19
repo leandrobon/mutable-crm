@@ -238,6 +238,14 @@ migration is still in effect and the error names the value that blocked it.
 deleting a record. A migration argument that no longer parses also counts as
 destructive — an unreadable change is not one to reassure anyone about.
 
+**The model is told that undo exists, and told it is not his to run.** The
+system prompt in `propose.ts` describes the History tab and the LIFO rule, so a
+request to revert is answered with where the button is instead of a refusal.
+This is prompt text only — there is no revert tool, and the vocabulary is still
+the boundary. It is the one place a prompt makes a claim about the UI, so if the
+undo control moves or stops being last-in-first-out, that paragraph is wrong and
+the model will confidently say so to the user.
+
 **The `.sql` file is left in place when a migration is undone.** It records that
 the migration was applied, which stays true; `reverted_at` on the row records
 that it was later undone. The row remains the source of truth, the file remains
