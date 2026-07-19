@@ -58,16 +58,25 @@ SQL generators for the four operations are code we own.
 
 ## Layout
 
+**Read `docs/ARCHITECTURE.md` before adding a file** — it documents every
+directory and file, and why each exists. Keep it current when you add one.
+
+The short version:
+
 ```
-src/db/index.ts       pg pool + drizzle client (singleton in dev)
-src/db/meta.sql       _meta schema: migration history
-scripts/init-db.ts    applies meta.sql
+src/db/               connection + internal _meta tables
+src/lib/schema/       reading the live database
+src/lib/migrations/   the engine: tools, model call, SQL generation
+scripts/              dev utilities + the regression suite
 migrations/           generated .sql files, one per applied migration
 ```
 
 Important convention: **user entities live in `public`, internal tables in
 `_meta`.** Introspection reads only `public`, so it never sees its own tables.
 Don't move anything between schemas without updating introspection.
+
+Run `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts`
+after any change to `sql.ts` or `introspect.ts`.
 
 ## Commands
 
