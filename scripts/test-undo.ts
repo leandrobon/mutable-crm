@@ -19,6 +19,8 @@ import { describeRevert, undoableId } from "@/lib/migrations/revert";
 import type { ToolCall } from "@/lib/migrations/tools";
 
 const TABLE = "undo_probe";
+/** Created by the multi-table case at the end, dropped by cleanup if it fails. */
+const BATCH_TABLES = ["undo_probe_barns", "undo_probe_herds"];
 
 let failures = 0;
 
@@ -52,7 +54,13 @@ const created: { id: number; filename: string }[] = [];
  *  history row it wrote. */
 async function applyStep(call: ToolCall): Promise<number> {
   const schema = await introspectSchema();
-  const plan = planMigration(call, schema, await rowCount(call.args.tableName));
+  // createTables acts on no existing table, so there are no rows to count.
+  const subject = "tableName" in call.args ? call.args.tableName : null;
+  const plan = planMigration(
+    call,
+    schema,
+    subject ? await rowCount(subject) : 0,
+  );
   if (!plan.ok) throw new Error(`setup failed to plan: ${plan.reason}`);
 
   const result = await applyMigration(plan.proposal);
@@ -75,7 +83,9 @@ async function revertedAt(id: number): Promise<Date | null> {
 }
 
 async function cleanup() {
-  await pool.query(`DROP TABLE IF EXISTS ${TABLE}`);
+  for (const name of [TABLE, ...BATCH_TABLES]) {
+    await pool.query(`DROP TABLE IF EXISTS ${name}`);
+  }
   for (const { id, filename } of created) {
     await pool.query(`DELETE FROM _meta.migrations WHERE id = $1`, [id]);
     await unlink(join(process.cwd(), "migrations", filename)).catch(() => {});
@@ -221,6 +231,63 @@ async function main() {
   );
   check("the migration is still in effect", (await revertedAt(typeId)) === null);
   check("the row that caused it is still there", (await rowCount(TABLE)) === 3);
+
+  /* ---- undoing several tables created together -------------------------- */
+
+  console.log("\n# undoing a change that created several tables");
+
+  const batchId = await applyStep({
+    name: "createTables",
+    args: {
+      tables: [
+        {
+          tableName: BATCH_TABLES[0],
+          columns: [{ name: "name", type: "text", nullable: false }],
+        },
+        {
+          tableName: BATCH_TABLES[1],
+          columns: [{ name: "head_count", type: "integer", nullable: true }],
+        },
+      ],
+    },
+  });
+
+  const withBatch = await introspectSchema();
+  check(
+    "both tables exist after applying",
+    BATCH_TABLES.every((n) => withBatch.tables.some((t) => t.name === n)),
+  );
+
+  // Rows in them, because dropping empty tables proves nothing.
+  await pool.query(`INSERT INTO ${BATCH_TABLES[0]} (name) VALUES ('north barn')`);
+  await pool.query(`INSERT INTO ${BATCH_TABLES[1]} (head_count) VALUES (42)`);
+
+  const batchPlan = describeRevert({
+    toolName: "createTables",
+    toolArgs: {
+      tables: BATCH_TABLES.map((n) => ({
+        tableName: n,
+        // A real column: the schema requires at least one, and an empty list
+        // would fail to parse and silently fall back to the generic wording.
+        columns: [{ name: "name", type: "text", nullable: true }],
+      })),
+    },
+  });
+  check("undoing it is described as destructive", batchPlan.destructive);
+  check(
+    "and names both tables",
+    BATCH_TABLES.every((n) => batchPlan.summary.includes(n)),
+    batchPlan.summary,
+  );
+
+  const undoBatch = await revertMigration(batchId);
+  check("undo succeeded", undoBatch.ok, undoBatch.ok ? "" : undoBatch.reason);
+
+  const withoutBatch = await introspectSchema();
+  check(
+    "both tables are gone, in one undo",
+    BATCH_TABLES.every((n) => !withoutBatch.tables.some((t) => t.name === n)),
+  );
 
   /* ---- undoableId agrees with what the server enforces ------------------ */
 

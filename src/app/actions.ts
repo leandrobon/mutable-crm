@@ -16,7 +16,20 @@ export type ProposeResponse =
   | { kind: "message"; text: string }
   | { kind: "rejected"; reason: string; text: string };
 
-async function rowCount(tableName: string): Promise<number> {
+/**
+ * The existing table an operation acts on, or null when it acts on none.
+ *
+ * `createTables` is the null case: every table in it is new, so there are no
+ * rows to count and nothing for the "would this break existing data" checks to
+ * look at.
+ */
+function subjectTable(call: ToolCall): string | null {
+  return "tableName" in call.args ? call.args.tableName : null;
+}
+
+async function rowCount(tableName: string | null): Promise<number> {
+  if (tableName === null) return 0;
+
   const { rows } = await pool.query<{ present: boolean }>(
     `SELECT to_regclass($1) IS NOT NULL AS present`,
     [`public.${tableName}`],
@@ -73,7 +86,7 @@ export async function propose(
   const plan = planMigration(
     result.call,
     schema,
-    await rowCount(result.call.args.tableName),
+    await rowCount(subjectTable(result.call)),
   );
 
   if (!plan.ok) {
@@ -117,7 +130,7 @@ export async function apply(call: ToolCall): Promise<ApplyResponse> {
   const plan = planMigration(
     verified,
     schema,
-    await rowCount(verified.args.tableName),
+    await rowCount(subjectTable(verified)),
   );
 
   if (!plan.ok) return { ok: false, reason: plan.reason };

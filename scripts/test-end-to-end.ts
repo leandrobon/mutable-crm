@@ -54,10 +54,14 @@ async function propose(request: string, expected: string | null) {
   check(`chose ${expected}`, result.call.name === expected, `got ${result.call.name}`);
   console.log(`  args: ${JSON.stringify(result.call.args)}`);
 
+  // createTables acts on no existing table, so there are no rows to count.
+  const subject =
+    "tableName" in result.call.args ? result.call.args.tableName : null;
+
   const plan = planMigration(
     result.call,
     schema,
-    await rowCount(result.call.args.tableName),
+    subject ? await rowCount(subject) : 0,
   );
   if (!plan.ok) {
     console.log(`  rejected: ${plan.reason}`);
@@ -73,7 +77,10 @@ async function propose(request: string, expected: string | null) {
 async function main() {
   await propose("the contacts need a field for the company they work at", "addColumn");
   await propose("full_name should just be called name", "renameColumn");
-  await propose("I want to track deals, with a title and an amount", "createTable");
+  await propose(
+    "I want to track deals, with a title and an amount",
+    "createTables",
+  );
   await propose("score should be text instead of a number", "changeColumnType");
   await propose("delete the contacts table, I don't need it anymore", null);
   await propose("what tables do I have right now?", null);

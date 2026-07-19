@@ -102,7 +102,7 @@ The engine. Four files, and the order they run in is the order they're listed.
 
 | File | What it does |
 |---|---|
-| `tools.ts` | The four typed operations — `createTable`, `addColumn`, `renameColumn`, `changeColumnType` — as Anthropic tool definitions with `strict: true`, plus Zod schemas for parsing the arguments back. **This file is the security boundary.** There is no `dropTable` or `dropColumn`; the model has no way to express the request. Also defines the identifier rule (lowercase snake_case, ≤63 chars) that keeps us from ever emitting a quoted identifier. |
+| `tools.ts` | The four typed operations — `createTables`, `addColumn`, `renameColumn`, `changeColumnType` — as Anthropic tool definitions with `strict: true`, plus Zod schemas for parsing the arguments back. **This file is the security boundary.** There is no `dropTable` or `dropColumn`; the model has no way to express the request. Also defines the identifier rule (lowercase snake_case, ≤63 chars) that keeps us from ever emitting a quoted identifier, and the batch caps. Note `toolSchemas` lists five and `TOOL_DEFINITIONS` four — see "Creating several tables at once". |
 | `propose.ts` | Sends the schema and the tools to the model and returns either a validated `ToolCall` or plain text. The only file that talks to the Anthropic API. Contains no SQL and never asks for any. |
 | `sql.ts` | `planMigration(call, schema, rowCount)` → a `Proposal` (summary, impact, `upSql`, `downSql`) or a rejection with a plain-language reason. Pure — no database access — so every branch is directly testable. This is where the "must work with data in the table" rules live, e.g. refusing a required column on a populated table. |
 | `apply.ts` | `applyMigration(proposal)` runs the `up` SQL and inserts the history row in one transaction on a single checked-out connection. `listMigrations()` reads the history back, `revertMigration(id)` runs a stored reverse. The `.sql` file is written after the commit, on purpose — see below. |
@@ -164,6 +164,7 @@ sync.
 | File | What it does |
 |---|---|
 | `init-db.ts` | Applies `meta.sql`. Idempotent. |
+| `seed-fixture.ts` | Recreates the `contacts` table the suites run against — **a test fixture, not a CRM seed**. `test-migrations.ts` and `test-rows.ts` hardcode its columns, its `numeric(10,2)` precision and its two rows, so on a freshly reset database they fail until this has run. Idempotent. If you change the shape here, run both suites. |
 | `introspect-dump.ts` | Prints what introspection currently sees, raw and as the model sees it. Useful when the schema changes under you. |
 | `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it — plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started — plus the rejection cases. No model, no API credits. Run it after any change to `sql.ts` or `introspect.ts`. |
 | `test-rows.ts` | The regression suite for row editing: insert, update, delete against a populated table, `numeric(10,2)` surviving the round trip, the validation rejections, page clamping, and the identifier boundary — a table or column name that is really a SQL fragment must be refused, not escaped. No model, no API credits. Run it after any change to `rows/mutate.ts` or `rows/read.ts`. |
@@ -182,6 +183,46 @@ visible half of the "every migration has a reverse" rule.
 The `_meta.migrations` row holds the same `up_sql` and `down_sql` and is what
 undo will actually read, so the two are redundant by design: the row is the
 source of truth, the file is what a human looks at.
+
+## Creating several tables at once
+
+`createTables` takes an array, so a broad request — "a CRM to keep track of my
+farm" — produces one tool call rather than several.
+
+**Why one call and not several.** Every layer below `propose` assumes one
+proposal is one migration: one review card, one apply, one `_meta.migrations`
+row, one `.sql` file, one entry in the History tab. Letting the model emit
+several tool calls would break that assumption in all of them at once, and undo
+being last-in-first-out would turn "undo my farm CRM" into six clicks in the
+right order. A plural tool keeps every one of those files untouched — the only
+code that changed was the two places reading `args.tableName`.
+
+**It is still four operations.** There is no singular `createTable` offered to
+the model; one table is an array of one. Having both would make the model choose
+between overlapping tools for no benefit. The singular schema does remain in
+`toolSchemas`, unoffered, so `describeRevert()` can still read history rows
+written before the change — `planMigration` keeps its case for the same reason.
+
+**All or nothing.** `planOneTable()` validates each table, and the first
+rejection rejects the whole request. They are created in a single transaction,
+so there is no such thing as applying the good half. `planOneTable` also carries
+the set of names claimed earlier in the same batch, because the live schema
+cannot catch a request that asks for the same table twice — neither exists yet.
+
+**The reverse drops in reverse creation order.** It makes no difference today,
+since nothing references anything. It is written that way so it still reads
+correctly the day tables can reference each other.
+
+**The caps are about review, not about Postgres.** `MAX_TABLES_PER_REQUEST` and
+`MAX_COLUMNS_PER_TABLE` exist because rule 1 — the user reviews the proposal
+before applying — degrades quietly as the proposal grows. The mechanism is
+identical at any size; the human is not. This is the honest cost of the feature.
+
+**No relations, stated out loud.** There is no foreign key tool, so the prompt
+tells the model to express references as plain integer columns (`field_id`) and
+to say in its reply that nothing enforces them. The schema the user gets implies
+relationships it does not enforce, and the reply is the only place that gap is
+disclosed.
 
 ## Undo (v1)
 

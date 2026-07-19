@@ -90,12 +90,31 @@ the build fails.
 ## Commands
 
 ```bash
-npm run db:up      # start postgres
-npm run db:init    # create the _meta schema (idempotent)
-npm run db:reset   # drop the volume and start clean
-npm run db:psql    # psql shell inside the container
+npm run db:up       # start postgres
+npm run db:init     # create the _meta schema (idempotent)
+npm run db:fixture  # recreate the contacts table the test suites need
+npm run db:reset    # drop the volume and start clean
+npm run db:psql     # psql shell inside the container
 npm run dev
 ```
+
+**Starting from an empty database** — the three commands go together, and the
+`migrations/` files are part of the state:
+
+```bash
+npm run db:reset && npm run db:init && npm run db:fixture
+rm migrations/*.sql          # keep .gitkeep
+```
+
+`db:reset` destroys the volume, so it takes the `contacts` fixture with it.
+`db:fixture` puts it back: the regression suites hardcode that table, and
+without it they fail on a clean database for reasons that look like real bugs.
+Delete the `.sql` files in the same breath — they describe migrations that the
+new database has no history rows for, and leaving them makes the folder claim a
+past the database does not have.
+
+To test the app itself from nothing (no `contacts`, no `leads`), skip
+`db:fixture` — just remember the suites will not pass until you run it.
 
 ## Conventions
 
@@ -107,8 +126,26 @@ npm run dev
 
 ## v0 scope (three days)
 
-Exactly four **schema** operations: create table, add column, rename column,
+Exactly four **schema** operations: create tables, add column, rename column,
 change column type. Nothing else.
+
+**Creating tables is plural.** `createTables` takes an array, so "a CRM to track
+my farm" becomes one tool call, one proposal, one migration and one undo,
+instead of a stack of them. A single table is an array of one — there is no
+singular version of the tool. This is still four operations, not five.
+
+Two consequences worth keeping in mind:
+
+- **One bad table rejects the whole request.** They are created in a single
+  transaction, so there is no applying the good half. A partial CRM is worse
+  than a clear refusal.
+- **The batch is capped** (`MAX_TABLES_PER_REQUEST`). Not a database limit — a
+  review limit. Applying is a user action and rule 1 assumes the user *reads*
+  what they apply; a twenty-table proposal gets approved by scrolling.
+
+`createTable` (singular) still exists in `toolSchemas` but is not offered to the
+model. It is there so history rows written before the change can still be read
+and reversed.
 
 Editing rows — add, edit, delete a record from the CRM view — is in scope and
 built. It does not widen the four operations: it is data, not schema. No
@@ -144,8 +181,19 @@ it, both explained in `docs/ARCHITECTURE.md` → "Undo":
 Run `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-undo.ts`
 after any change to `revert.ts` or `apply.ts`.
 
-Still to do: drop column with explicit confirmation, relations between entities,
-a real CRM seed (contacts, deals, notes).
+**Multi-table creation — built.** See `createTables` under v0 scope above.
+
+Dropped from v1 deliberately: drop column, relations between entities, a real
+CRM seed. Not "not yet" — decided against for this version.
+
+**The relations gap is now visible to users**, and that is the main thing to
+know if you pick relations up later. A generated farm CRM has `field_id` on
+`crops` because the model was told to express references as plain integer
+columns; nothing enforces that the id points at a row that exists, and nothing
+cascades when the target is deleted. The prompt requires the model to say so out
+loud when it designs one. If you add foreign keys, that instruction goes stale
+and the `createTables` reverse has to drop tables in an order that respects
+them — it already drops in reverse creation order for exactly this reason.
 
 **Drop column is the first destructive tool.** Today the security story is that
 deletion is *absent* from the vocabulary, not disabled — that is the boundary.

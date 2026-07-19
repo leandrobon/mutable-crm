@@ -35,6 +35,74 @@ function findTable(schema: DbSchema, name: string): Table | undefined {
   return schema.tables.find((t) => t.name === name);
 }
 
+type NewColumn = { name: string; type: string; nullable: boolean };
+
+/**
+ * Validates one table definition and returns its CREATE statement.
+ *
+ * Shared by `createTables` and the legacy `createTable`, so the two cannot
+ * drift: whatever a single table is checked for, each table in a batch is
+ * checked for identically.
+ *
+ * `alreadyTaken` carries the names claimed earlier in the same request. The
+ * live schema cannot catch a batch that asks for the same table twice, because
+ * neither one exists yet.
+ */
+function planOneTable(
+  tableName: string,
+  columns: NewColumn[],
+  schema: DbSchema,
+  alreadyTaken: Set<string>,
+): { ok: true; sql: string } | { ok: false; reason: string } {
+  if (findTable(schema, tableName)) {
+    return { ok: false, reason: `The table "${tableName}" already exists.` };
+  }
+  if (alreadyTaken.has(tableName)) {
+    return {
+      ok: false,
+      reason: `"${tableName}" is listed twice in the same change.`,
+    };
+  }
+
+  const seen = new Set<string>();
+  for (const column of columns) {
+    if (RESERVED_COLUMNS.includes(column.name as "id")) {
+      return {
+        ok: false,
+        reason: `"${column.name}" is added automatically — it cannot be listed as a column of "${tableName}".`,
+      };
+    }
+    if (seen.has(column.name)) {
+      return {
+        ok: false,
+        reason: `The column "${column.name}" is listed twice on "${tableName}".`,
+      };
+    }
+    seen.add(column.name);
+  }
+
+  const columnSql = columns
+    .map((c) => `  ${ident(c.name)} ${c.type}${c.nullable ? "" : " NOT NULL"}`)
+    .join(",\n");
+
+  return {
+    ok: true,
+    sql: [
+      `CREATE TABLE ${ident(tableName)} (`,
+      `  id serial PRIMARY KEY,`,
+      `${columnSql},`,
+      `  created_at timestamptz NOT NULL DEFAULT now()`,
+      `);`,
+    ].join("\n"),
+  };
+}
+
+function fieldsPhrase(columns: NewColumn[]): string {
+  return `${columns.length} ${columns.length === 1 ? "field" : "fields"}: ${columns
+    .map((c) => c.name)
+    .join(", ")}`;
+}
+
 function rowsPhrase(rowCount: number): string {
   if (rowCount === 0) return "The table is empty.";
   if (rowCount === 1) return "There is 1 row in the table.";
@@ -51,57 +119,88 @@ export function planMigration(
   rowCount: number,
 ): PlanResult {
   switch (call.name) {
-    case "createTable": {
-      const { tableName, columns } = call.args;
+    case "createTables": {
+      const { tables } = call.args;
 
-      if (findTable(schema, tableName)) {
-        return { ok: false, reason: `The table "${tableName}" already exists.` };
+      const taken = new Set<string>();
+      const statements: string[] = [];
+
+      for (const table of tables) {
+        const planned = planOneTable(
+          table.tableName,
+          table.columns,
+          schema,
+          taken,
+        );
+        // One bad table rejects the whole request. These are created in a
+        // single transaction, so there is no such thing as applying the good
+        // half — and a partial CRM is worse than a clear refusal.
+        if (!planned.ok) return planned;
+
+        taken.add(table.tableName);
+        statements.push(planned.sql);
       }
 
-      const seen = new Set<string>();
-      for (const column of columns) {
-        if (RESERVED_COLUMNS.includes(column.name as "id")) {
-          return {
-            ok: false,
-            reason: `"${column.name}" is added automatically — it cannot be listed as a column.`,
-          };
-        }
-        if (seen.has(column.name)) {
-          return {
-            ok: false,
-            reason: `The column "${column.name}" is listed twice.`,
-          };
-        }
-        seen.add(column.name);
-      }
-
-      const columnSql = columns
-        .map(
-          (c) => `  ${ident(c.name)} ${c.type}${c.nullable ? "" : " NOT NULL"}`,
-        )
-        .join(",\n");
-
-      const upSql = [
-        `CREATE TABLE ${ident(tableName)} (`,
-        `  id serial PRIMARY KEY,`,
-        `${columnSql},`,
-        `  created_at timestamptz NOT NULL DEFAULT now()`,
-        `);`,
-      ].join("\n");
+      const names = tables.map((t) => t.tableName);
 
       return {
         ok: true,
         proposal: {
           toolName: call.name,
           args: call.args,
-          summary: `Create a table "${tableName}" with ${columns.length} ${
-            columns.length === 1 ? "field" : "fields"
-          }: ${columns.map((c) => c.name).join(", ")}.`,
+          summary:
+            tables.length === 1
+              ? `Create a table "${names[0]}" with ${fieldsPhrase(tables[0].columns)}.`
+              : `Create ${tables.length} tables: ${names.join(", ")}.`,
+          impact: [
+            tables.length === 1
+              ? "No existing data is affected — this is a new table."
+              : "No existing data is affected — these are new tables.",
+            // Only worth listing per table when there are several. For one, the
+            // summary above already says exactly this.
+            ...(tables.length > 1
+              ? tables.map((t) => `${t.tableName} — ${fieldsPhrase(t.columns)}.`)
+              : []),
+            tables.length === 1
+              ? "An id primary key and a created_at timestamp are added automatically."
+              : "Each one gets an id primary key and a created_at timestamp automatically.",
+            ...(tables.length > 1
+              ? [
+                  "All of them are created together: if any one fails, none are created.",
+                  "Undoing this drops all of them, with everything in them.",
+                ]
+              : []),
+          ],
+          upSql: statements.join("\n\n"),
+          // Reverse order, so this still reads correctly the day tables can
+          // reference each other and the last one created must go first.
+          downSql: [...names]
+            .reverse()
+            .map((name) => `DROP TABLE ${ident(name)};`)
+            .join("\n"),
+        },
+      };
+    }
+
+    // Legacy: no longer offered to the model, kept so a history row written
+    // before createTables can still be re-planned. See tools.ts.
+    case "createTable": {
+      const { tableName, columns } = call.args;
+
+      const planned = planOneTable(tableName, columns, schema, new Set());
+      if (!planned.ok) return planned;
+
+      return {
+        ok: true,
+        proposal: {
+          toolName: call.name,
+          args: call.args,
+          summary: `Create a table "${tableName}" with ${fieldsPhrase(columns)}.`,
           impact: [
             "No existing data is affected — this is a new table.",
             "An id primary key and a created_at timestamp are added automatically.",
           ],
-          upSql,
+          upSql: planned.sql,
           downSql: `DROP TABLE ${ident(tableName)};`,
         },
       };

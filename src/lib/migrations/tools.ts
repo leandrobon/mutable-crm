@@ -19,9 +19,45 @@ const IDENTIFIER = z
 
 const COLUMN_TYPE = z.enum(ALLOWED_TYPES);
 
+/**
+ * How many tables one request may create, and how many columns each may have.
+ *
+ * These are review limits, not database limits. Applying is a user action and
+ * the user is expected to read what they are applying — a proposal for twenty
+ * tables would be approved by scrolling, not by reading, which quietly turns
+ * the review step into a rubber stamp.
+ */
+export const MAX_TABLES_PER_REQUEST = 8;
+export const MAX_COLUMNS_PER_TABLE = 20;
+
+const TABLE_DEFINITION = z.object({
+  tableName: IDENTIFIER,
+  columns: z
+    .array(
+      z.object({
+        name: IDENTIFIER,
+        type: COLUMN_TYPE,
+        nullable: z.boolean(),
+      }),
+    )
+    .min(1)
+    .max(MAX_COLUMNS_PER_TABLE),
+});
+
 /** Zod schemas — the second validation pass. The API guarantees shape via
  *  `strict: true`; these give us parsed, typed values inside the app. */
 export const toolSchemas = {
+  createTables: z.object({
+    tables: z.array(TABLE_DEFINITION).min(1).max(MAX_TABLES_PER_REQUEST),
+  }),
+
+  /**
+   * Superseded by `createTables` and no longer offered to the model — see
+   * TOOL_DEFINITIONS. It stays here because `_meta.migrations` rows written
+   * before the change store arguments in this shape, and `describeRevert()`
+   * parses those arguments to say what undoing them would do. Removing it would
+   * not break anything, it would just make older history entries unreadable.
+   */
   createTable: z.object({
     tableName: IDENTIFIER,
     columns: z
@@ -82,44 +118,55 @@ const identifierDescription =
  */
 export const TOOL_DEFINITIONS = [
   {
-    name: "createTable",
+    name: "createTables",
     description:
-      "Create a new table. Every table automatically gets an `id` primary key and a `created_at` timestamp — do not include them in the columns list.",
+      "Create one or more new tables in a single change. Use this for a single table as well — pass an array of one. When the user describes a whole area of their business rather than one entity, design the full set of tables here in one call, so they review and apply it as one decision. Every table automatically gets an `id` primary key and a `created_at` timestamp — do not include them in any columns list.",
     strict: true,
     input_schema: {
       type: "object",
       properties: {
-        tableName: {
-          type: "string",
-          description: `Name of the new table, ${identifierDescription}. Use the plural form, e.g. "contacts".`,
-        },
-        columns: {
+        tables: {
           type: "array",
-          description: "The columns to create, besides id and created_at.",
+          description: `The tables to create, at most ${MAX_TABLES_PER_REQUEST}. Prefer few, well-chosen tables over many thin ones.`,
           items: {
             type: "object",
             properties: {
-              name: {
+              tableName: {
                 type: "string",
-                description: `Column name, ${identifierDescription}.`,
+                description: `Name of the new table, ${identifierDescription}. Use the plural form, e.g. "contacts".`,
               },
-              type: {
-                type: "string",
-                enum: ALLOWED_TYPES,
-                description: "Column type.",
-              },
-              nullable: {
-                type: "boolean",
-                description:
-                  "Whether the column accepts null. Prefer true unless the user clearly stated the field is required.",
+              columns: {
+                type: "array",
+                description: `The columns to create, besides id and created_at. At most ${MAX_COLUMNS_PER_TABLE} per table.`,
+                items: {
+                  type: "object",
+                  properties: {
+                    name: {
+                      type: "string",
+                      description: `Column name, ${identifierDescription}.`,
+                    },
+                    type: {
+                      type: "string",
+                      enum: ALLOWED_TYPES,
+                      description: "Column type.",
+                    },
+                    nullable: {
+                      type: "boolean",
+                      description:
+                        "Whether the column accepts null. Prefer true unless the user clearly stated the field is required.",
+                    },
+                  },
+                  required: ["name", "type", "nullable"],
+                  additionalProperties: false,
+                },
               },
             },
-            required: ["name", "type", "nullable"],
+            required: ["tableName", "columns"],
             additionalProperties: false,
           },
         },
       },
-      required: ["tableName", "columns"],
+      required: ["tables"],
       additionalProperties: false,
     },
   },
@@ -161,7 +208,10 @@ export const TOOL_DEFINITIONS = [
     input_schema: {
       type: "object",
       properties: {
-        tableName: { type: "string", description: "Name of an existing table." },
+        tableName: {
+          type: "string",
+          description: "Name of an existing table.",
+        },
         from: { type: "string", description: "Current column name." },
         to: {
           type: "string",
@@ -180,8 +230,14 @@ export const TOOL_DEFINITIONS = [
     input_schema: {
       type: "object",
       properties: {
-        tableName: { type: "string", description: "Name of an existing table." },
-        columnName: { type: "string", description: "Name of an existing column." },
+        tableName: {
+          type: "string",
+          description: "Name of an existing table.",
+        },
+        columnName: {
+          type: "string",
+          description: "Name of an existing column.",
+        },
         newType: {
           type: "string",
           enum: ALLOWED_TYPES,

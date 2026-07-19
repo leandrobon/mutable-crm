@@ -22,6 +22,23 @@ function migrationName(proposal: Proposal, now: Date): string {
   );
 
   const args = proposal.args as Record<string, unknown>;
+
+  // createTables names several at once. The filename takes the first and counts
+  // the rest — it only has to be recognisable and unique, and the full list is
+  // in the file and in the history row.
+  if (Array.isArray(args.tables)) {
+    const names = args.tables
+      .map((t) => (t as { tableName?: unknown }).tableName)
+      .filter((v): v is string => typeof v === "string");
+
+    const subject =
+      names.length > 1
+        ? `${names[0]}_and_${names.length - 1}_more`
+        : (names[0] ?? "tables");
+
+    return `${stamp}__${snake}_${subject}`;
+  }
+
   const subject = [args.tableName, args.columnName ?? args.from]
     .filter((v): v is string => typeof v === "string")
     .join("_");

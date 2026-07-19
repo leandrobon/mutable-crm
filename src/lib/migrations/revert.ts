@@ -59,6 +59,27 @@ export function describeRevert(record: {
 
     if (parsed.success) {
       switch (toolName) {
+        case "createTables": {
+          const { tables } = parsed.data as { tables: { tableName: string }[] };
+          const names = tables.map((t) => t.tableName);
+
+          return {
+            summary:
+              names.length === 1
+                ? `Drop the table "${names[0]}".`
+                : `Drop ${names.length} tables: ${names.join(", ")}.`,
+            impact: [
+              names.length === 1
+                ? `The table and every record in it are deleted.`
+                : `All ${names.length} tables and every record in them are deleted.`,
+              `Undoing this is not itself undoable — re-applying would create ${
+                names.length === 1 ? "it" : "them"
+              } empty.`,
+            ],
+            destructive: true,
+          };
+        }
+
         case "createTable": {
           const { tableName } = parsed.data as { tableName: string };
           return {

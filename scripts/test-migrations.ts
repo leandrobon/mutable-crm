@@ -48,12 +48,19 @@ function fingerprint(schema: Awaited<ReturnType<typeof introspectSchema>>) {
   return JSON.stringify(schema);
 }
 
+/** The existing table an operation acts on, or null — createTables acts on
+ *  none of them, every table in it is new. Mirrors actions.ts. */
+function subjectTable(call: ToolCall): string | null {
+  return "tableName" in call.args ? call.args.tableName : null;
+}
+
 async function roundTrip(label: string, call: ToolCall) {
   console.log(`\n# ${label}`);
 
   const before = await introspectSchema();
   const beforePrint = fingerprint(before);
-  const count = await rowCount(call.args.tableName);
+  const subject = subjectTable(call);
+  const count = subject ? await rowCount(subject) : 0;
 
   const result = planMigration(call, before, count);
   if (!result.ok) {
@@ -78,11 +85,13 @@ async function roundTrip(label: string, call: ToolCall) {
   const afterUp = await introspectSchema();
   check("up changed the schema", fingerprint(afterUp) !== beforePrint);
 
-  // Data must survive the forward migration.
-  const survived = await rowCount(call.args.tableName);
+  // Data must survive the forward migration. Creating tables is the exception:
+  // there was nothing there to survive.
+  const creates = call.name === "createTable" || call.name === "createTables";
+  const survived = subject ? await rowCount(subject) : 0;
   check(
     "rows survived the up migration",
-    survived === count || call.name === "createTable",
+    survived === count || creates,
     `${count} -> ${survived}`,
   );
 
@@ -100,7 +109,8 @@ async function roundTrip(label: string, call: ToolCall) {
 
 async function expectRejection(label: string, call: ToolCall) {
   const schema = await introspectSchema();
-  const count = await rowCount(call.args.tableName);
+  const subject = subjectTable(call);
+  const count = subject ? await rowCount(subject) : 0;
   const result = planMigration(call, schema, count);
   console.log(`\n# ${label}`);
   check(
@@ -114,14 +124,61 @@ async function expectRejection(label: string, call: ToolCall) {
 async function main() {
   console.log(`contacts has ${await rowCount("contacts")} rows\n`);
 
-  await roundTrip("createTable deals", {
+  await roundTrip("createTables, one table", {
+    name: "createTables",
+    args: {
+      tables: [
+        {
+          tableName: "deals",
+          columns: [
+            { name: "title", type: "text", nullable: false },
+            { name: "amount", type: "numeric", nullable: true },
+          ],
+        },
+      ],
+    },
+  });
+
+  // The case the plural tool exists for: a whole small domain in one migration,
+  // created together and dropped together.
+  await roundTrip("createTables, a whole domain at once", {
+    name: "createTables",
+    args: {
+      tables: [
+        {
+          tableName: "animals",
+          columns: [
+            { name: "tag", type: "text", nullable: false },
+            { name: "species", type: "text", nullable: true },
+            { name: "born_on", type: "date", nullable: true },
+          ],
+        },
+        {
+          tableName: "paddocks",
+          columns: [
+            { name: "name", type: "text", nullable: false },
+            { name: "hectares", type: "numeric", nullable: true },
+          ],
+        },
+        {
+          tableName: "treatments",
+          columns: [
+            { name: "animal_id", type: "integer", nullable: true },
+            { name: "medicine", type: "text", nullable: true },
+            { name: "given_on", type: "date", nullable: true },
+          ],
+        },
+      ],
+    },
+  });
+
+  // Still re-plannable, so a history row written before createTables existed
+  // can still be read back and reversed.
+  await roundTrip("createTable (legacy shape) still plans", {
     name: "createTable",
     args: {
-      tableName: "deals",
-      columns: [
-        { name: "title", type: "text", nullable: false },
-        { name: "amount", type: "numeric", nullable: true },
-      ],
+      tableName: "invoices",
+      columns: [{ name: "reference", type: "text", nullable: false }],
     },
   });
 
@@ -143,6 +200,54 @@ async function main() {
   await roundTrip("changeColumnType contacts.score numeric -> text", {
     name: "changeColumnType",
     args: { tableName: "contacts", columnName: "score", newType: "text" },
+  });
+
+  await expectRejection("createTables listing the same table twice", {
+    name: "createTables",
+    args: {
+      tables: [
+        {
+          tableName: "crops",
+          columns: [{ name: "name", type: "text", nullable: true }],
+        },
+        {
+          tableName: "crops",
+          columns: [{ name: "variety", type: "text", nullable: true }],
+        },
+      ],
+    },
+  });
+
+  // One bad table rejects the batch — there is no applying the good half.
+  await expectRejection("createTables where one table already exists", {
+    name: "createTables",
+    args: {
+      tables: [
+        {
+          tableName: "harvests",
+          columns: [{ name: "kilos", type: "numeric", nullable: true }],
+        },
+        {
+          tableName: "contacts",
+          columns: [{ name: "whatever", type: "text", nullable: true }],
+        },
+      ],
+    },
+  });
+
+  await expectRejection("createTables using a reserved column name", {
+    name: "createTables",
+    args: {
+      tables: [
+        {
+          tableName: "silos",
+          columns: [
+            { name: "capacity", type: "numeric", nullable: true },
+            { name: "created_at", type: "timestamptz", nullable: true },
+          ],
+        },
+      ],
+    },
   });
 
   await expectRejection("addColumn required, on a table with rows", {
