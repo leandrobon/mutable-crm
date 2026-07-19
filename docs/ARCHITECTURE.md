@@ -66,7 +66,7 @@ Everything about reading the database as it actually is.
 
 | File | What it does |
 |---|---|
-| `types.ts` | `ALLOWED_TYPES` (the eight Postgres types we permit) plus the `Column` / `Table` / `DbSchema` shapes every other layer speaks in. The type list is a boundary: a type not on it cannot be requested. |
+| `types.ts` | `ALLOWED_TYPES` (the eight Postgres types we permit) plus the `Column` / `Table` / `DbSchema` shapes every other layer speaks in. The type list is a boundary: a type not on it cannot be requested. Also `ident()`, the last check every table and column name passes before it is interpolated into a SQL string. It lives here because both the migrations engine and the rows layer need it. |
 | `introspect.ts` | `introspectSchema()` reads `public` from `information_schema` joined with `pg_catalog`. The `pg_catalog` half is what preserves `numeric(10,2)` precision. `information_schema` alone reports bare `numeric`, which would silently drop precision when generating a reverse migration. Also holds `formatSchemaForPrompt()`, which renders the schema as the compact text the model sees; it lives here because it is effectively part of the prompt. |
 
 This layer is why there is no hand-written UI per entity. Every table rendered

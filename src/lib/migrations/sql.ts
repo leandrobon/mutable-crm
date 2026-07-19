@@ -1,4 +1,4 @@
-import type { DbSchema, Table } from "@/lib/schema/types";
+import { ident, type DbSchema, type Table } from "@/lib/schema/types";
 import type { ToolCall } from "./tools";
 
 /** Columns every table gets automatically. They are not the model's to touch. */
@@ -18,18 +18,6 @@ export type Proposal = {
 export type PlanResult =
   | { ok: true; proposal: Proposal }
   | { ok: false; reason: string };
-
-/**
- * Last line of defence before an identifier reaches a SQL string. The tool
- * schemas already enforce this shape, so reaching this throw means a bug
- * upstream, not bad input from the model.
- */
-function ident(name: string): string {
-  if (!/^[a-z_][a-z0-9_]*$/.test(name) || name.length > 63) {
-    throw new Error(`Refusing to build SQL with the identifier "${name}".`);
-  }
-  return name;
-}
 
 function findTable(schema: DbSchema, name: string): Table | undefined {
   return schema.tables.find((t) => t.name === name);

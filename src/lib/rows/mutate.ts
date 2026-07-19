@@ -1,5 +1,5 @@
 import { pool } from "@/db";
-import type { Column, DbSchema, Table } from "@/lib/schema/types";
+import { ident, type Column, type DbSchema, type Table } from "@/lib/schema/types";
 import { baseType, isEditable, type CellValue } from "./cells";
 
 /**
@@ -181,14 +181,14 @@ export async function insertRow(
     const coerced = coerce(column, raw);
     if (!coerced.ok) return { ok: false, reason: coerced.reason };
 
-    columns.push(column.name);
+    columns.push(ident(column.name));
     params.push(coerced.value);
   }
 
   const sql =
     columns.length === 0
-      ? `INSERT INTO ${table.name} DEFAULT VALUES RETURNING id`
-      : `INSERT INTO ${table.name} (${columns.join(", ")}) VALUES (${columns
+      ? `INSERT INTO ${ident(table.name)} DEFAULT VALUES RETURNING id`
+      : `INSERT INTO ${ident(table.name)} (${columns.join(", ")}) VALUES (${columns
           .map((_, i) => `$${i + 1}`)
           .join(", ")}) RETURNING id`;
 
@@ -218,7 +218,7 @@ export async function updateCell(
 
   try {
     const { rowCount } = await pool.query(
-      `UPDATE ${table.name} SET ${column.name} = $1 WHERE id = $2`,
+      `UPDATE ${ident(table.name)} SET ${ident(column.name)} = $1 WHERE id = $2`,
       [coerced.value, rowId],
     );
     if (rowCount === 0) {
@@ -241,7 +241,7 @@ export async function deleteRow(
 
   try {
     const { rowCount } = await pool.query(
-      `DELETE FROM ${table.name} WHERE id = $1`,
+      `DELETE FROM ${ident(table.name)} WHERE id = $1`,
       [rowId],
     );
     if (rowCount === 0) {

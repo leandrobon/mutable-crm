@@ -16,6 +16,23 @@ export function isAllowedType(value: string): value is AllowedType {
   return (ALLOWED_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * Last line of defence before an identifier reaches a SQL string.
+ *
+ * Identifiers cannot be parameterized in Postgres, so every table and column
+ * name that gets interpolated goes through here first. Callers have already
+ * validated the name (the tool schemas upstream of a migration, the
+ * introspected schema upstream of a row edit), so reaching this throw means a
+ * bug upstream, not bad input. It lives here rather than in the migrations
+ * engine because the rows layer needs it too.
+ */
+export function ident(name: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name) || name.length > 63) {
+    throw new Error(`Refusing to build SQL with the identifier "${name}".`);
+  }
+  return name;
+}
+
 export type Column = {
   name: string;
   /** Normalized to one of ALLOWED_TYPES when possible, else the raw Postgres type. */

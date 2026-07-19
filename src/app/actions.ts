@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "@/db";
 import { introspectSchema } from "@/lib/schema/introspect";
+import { ident } from "@/lib/schema/types";
 import { proposeChange, type Turn } from "@/lib/migrations/propose";
 import { planMigration, type Proposal } from "@/lib/migrations/sql";
 import { applyMigration, revertMigration } from "@/lib/migrations/apply";
@@ -36,7 +37,7 @@ async function rowCount(tableName: string | null): Promise<number> {
   );
   if (!rows[0].present) return 0;
   const counted = await pool.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM ${tableName}`,
+    `SELECT count(*)::int AS n FROM ${ident(tableName)}`,
   );
   return counted.rows[0].n;
 }

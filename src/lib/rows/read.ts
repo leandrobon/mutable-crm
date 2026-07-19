@@ -1,5 +1,5 @@
 import { pool } from "@/db";
-import type { DbSchema } from "@/lib/schema/types";
+import { ident, type DbSchema } from "@/lib/schema/types";
 import { baseType, type CellValue, type TableData } from "./cells";
 
 export const PAGE_SIZE = 25;
@@ -34,7 +34,7 @@ export async function fetchTableData(
   if (!table) return null;
 
   const { rows: countRows } = await pool.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM ${table.name}`,
+    `SELECT count(*)::int AS n FROM ${ident(table.name)}`,
   );
   const totalRows = countRows[0].n;
   const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
@@ -44,7 +44,7 @@ export async function fetchTableData(
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
 
   const { rows } = await pool.query(
-    `SELECT * FROM ${table.name} ORDER BY id DESC LIMIT $1 OFFSET $2`,
+    `SELECT * FROM ${ident(table.name)} ORDER BY id DESC LIMIT $1 OFFSET $2`,
     [PAGE_SIZE, safePage * PAGE_SIZE],
   );
 
