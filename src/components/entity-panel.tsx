@@ -7,7 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import type { TableData } from "@/lib/schema/rows";
+import { formatCell, type TableData } from "@/lib/rows/cells";
 
 /**
  * Renders every table from the live schema. There is nothing here specific to
@@ -79,14 +79,14 @@ function EntityTable({ data }: { data: TableData }) {
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row, index) => (
-                <TableRow key={index}>
+              rows.map((row) => (
+                <TableRow key={row.id}>
                   {table.columns.map((column) => (
                     <TableCell
                       key={column.name}
                       className="whitespace-nowrap font-mono text-xs"
                     >
-                      {row[column.name] ?? (
+                      {formatCell(row.cells[column.name], column.type) ?? (
                         <span className="text-muted-foreground/50">null</span>
                       )}
                     </TableCell>

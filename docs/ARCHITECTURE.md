@@ -37,6 +37,7 @@ src/
   db/                 database connection and internal tables
   lib/
     schema/           reading the live database
+    rows/             reading and writing the data inside it
     migrations/       the engine: tools, SQL generation, the model call
   components/ui/      shadcn primitives (generated — don't hand-edit)
   app/                Next.js routes, server actions, the UI
@@ -67,10 +68,33 @@ Everything about reading the database as it actually is.
 |---|---|
 | `types.ts` | `ALLOWED_TYPES` — the eight Postgres types we permit — plus the `Column` / `Table` / `DbSchema` shapes every other layer speaks in. The type list is a boundary: a type not on it cannot be requested. |
 | `introspect.ts` | `introspectSchema()` reads `public` from `information_schema` joined with `pg_catalog`. The `pg_catalog` half is what preserves `numeric(10,2)` precision — `information_schema` alone reports bare `numeric`, which would silently drop precision when generating a reverse migration. Also holds `formatSchemaForPrompt()`, which renders the schema as the compact text the model sees; it lives here because it is effectively part of the prompt. |
-| `rows.ts` | `fetchAllTableData()` reads the rows behind each table for the right-hand panel, and formats values for display. Table names reach a SQL string here, so each one is looked up in the introspected schema first — that lookup is what makes the interpolation safe. |
 
 This layer is why there is no hand-written UI per entity. Every table rendered
 on the right comes from `introspectSchema()`.
+
+### `src/lib/rows/`
+
+The data inside the tables, as opposed to their shape. **Nothing here is a
+migration**: no file is written, `_meta.migrations` is untouched, and the model
+is not involved. Row edits run straight from a user action in the CRM view,
+which is why they need no propose/apply cycle — the two rules in AGENTS.md
+govern schema changes, and this is not one.
+
+| File | What it does |
+|---|---|
+| `cells.ts` | `CellValue` / `RowRecord` / `TableData`, plus `baseType()`, `isEditable()` and `formatCell()`. Deliberately imports no database module: both views are client components and need these to render, so anything here that reached for `pool` would pull `pg` into the browser bundle and fail the build. |
+| `read.ts` | `fetchTableData()` reads one page of a table, `fetchAllTableData()` the first page of each. Returns **raw** values, not display strings — the CRM view writes cells back, and formatting a boolean to `"yes"` on the way out would mean parsing `"yes"` back on the way in. Table names reach a SQL string here, so each is looked up in the introspected schema first; that lookup is what makes the interpolation safe. |
+| `mutate.ts` | `insertRow()`, `updateCell()`, `deleteRow()`, and the `coerce()` that turns form input into a value the column accepts. |
+
+**The two halves of SQL safety here are not interchangeable.** Identifiers
+cannot be parameterized in Postgres, so every table and column name is resolved
+against the introspected schema first — the string that reaches the SQL came
+from `pg_catalog`, never from the request, and an unknown name is an error
+rather than an escaped identifier. Values are always parameters and are never
+interpolated, whatever they contain. `scripts/test-rows.ts` asserts both.
+
+`id` and `created_at` are rejected by `isEditable()`: we create them on every
+table, the model cannot touch them, and neither can the user by hand.
 
 ### `src/lib/migrations/`
 
@@ -109,9 +133,11 @@ and carries on rather than failing.
 | File | What it does |
 |---|---|
 | `app/page.tsx` | Server component. Introspects, reads the rows, renders the split screen. `dynamic = "force-dynamic"` because the schema can change on any request and a cached page would show a stale one. |
-| `app/actions.ts` | The two server actions: `propose(message)` and `apply(call)`. The only bridge between the browser and the engine. |
-| `components/entity-panel.tsx` | Server component. Renders every table from the schema. Contains nothing specific to any entity — this is the file that would not exist if the UI were hand-written per table. |
-| `components/chat.tsx` | The only client component. Message list, proposal cards with the SQL folded away, and the apply button. |
+| `app/actions.ts` | Every server action, in two groups. Schema: `propose(message, history)` and `apply(call)` — the only bridge between the browser and the engine. Records: `loadTable`, `createRecord`, `updateRecordCell`, `deleteRecord`, which re-introspect on each call so names are resolved against the live schema rather than trusted from the request. |
+| `components/panel.tsx` | The right-hand side, and the toggle between its two readings of the same data. The toggle changes the presentation, never the source. |
+| `components/crm-view.tsx` | The non-technical view: entities down the side, records in the middle, edited in place. Cells become inputs on click; booleans are checkboxes and save immediately; new records are a draft row at the bottom. Deleting takes two clicks, because a row has no reverse the way a migration does. |
+| `components/entity-panel.tsx` | The technical view. Every table, its column types, raw values, read-only. Contains nothing specific to any entity — this is the file that would not exist if the UI were hand-written per table. |
+| `components/chat.tsx` | Message list, proposal cards with the SQL folded away, and the apply button. Also holds the conversation: `transcriptOf()` flattens what is on screen into the turns sent back with the next request, rendering past proposals as `[proposed ...]` lines so the model can see what it offered and whether the user took it. |
 
 **`apply` takes the tool call, not the SQL.** The browser sends back
 `{name, args}`; the server re-validates them and regenerates the SQL. Two
@@ -132,6 +158,7 @@ sync.
 | `init-db.ts` | Applies `meta.sql`. Idempotent. |
 | `introspect-dump.ts` | Prints what introspection currently sees, raw and as the model sees it. Useful when the schema changes under you. |
 | `test-migrations.ts` | The regression suite. Round-trips all four operations against a table with rows in it — plan, apply `up`, verify, apply `down`, verify the schema is byte-identical to where it started — plus the rejection cases. No model, no API credits. Run it after any change to `sql.ts` or `introspect.ts`. |
+| `test-rows.ts` | The regression suite for row editing: insert, update, delete against a populated table, `numeric(10,2)` surviving the round trip, the validation rejections, page clamping, and the identifier boundary — a table or column name that is really a SQL fragment must be refused, not escaped. No model, no API credits. Run it after any change to `rows/mutate.ts` or `rows/read.ts`. |
 | `test-end-to-end.ts` | The full path with the real model: request → tool choice → SQL → apply → history row and file → revert. **Costs API credits** — run it deliberately, not on every save. Run it after changing `tools.ts` or `propose.ts`, since those are what shape the model's judgment. |
 
 ### `migrations/`

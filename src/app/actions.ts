@@ -7,6 +7,9 @@ import { proposeChange, type Turn } from "@/lib/migrations/propose";
 import { planMigration, type Proposal } from "@/lib/migrations/sql";
 import { applyMigration } from "@/lib/migrations/apply";
 import { isToolName, toolSchemas, type ToolCall } from "@/lib/migrations/tools";
+import { fetchTableData } from "@/lib/rows/read";
+import type { TableData } from "@/lib/rows/cells";
+import { deleteRow, insertRow, updateCell } from "@/lib/rows/mutate";
 
 export type ProposeResponse =
   | { kind: "proposal"; call: ToolCall; proposal: Proposal; text: string }
@@ -130,4 +133,66 @@ export async function apply(call: ToolCall): Promise<ApplyResponse> {
     fileWritten: applied.fileWritten,
     summary: plan.proposal.summary,
   };
+}
+
+/* ---------------------------------------------------------------------------
+ * Records.
+ *
+ * Editing rows is not a schema change: no proposal, no migration file, no
+ * model. These run straight from the CRM view. Each one re-introspects first,
+ * so the table and column names are resolved against the live schema rather
+ * than trusted from the request — see lib/rows/mutate.ts.
+ * ------------------------------------------------------------------------ */
+
+export type RowResult = { ok: true } | { ok: false; reason: string };
+
+/** Re-reads one table after a change, so only that table re-renders. */
+export async function loadTable(
+  tableName: string,
+  page = 0,
+): Promise<TableData | null> {
+  const schema = await introspectSchema();
+  return fetchTableData(schema, tableName, page);
+}
+
+export async function createRecord(
+  tableName: string,
+  values: Record<string, unknown>,
+): Promise<RowResult> {
+  const schema = await introspectSchema();
+  const result = await insertRow(schema, tableName, values ?? {});
+  if (!result.ok) return result;
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function updateRecordCell(
+  tableName: string,
+  rowId: number,
+  columnName: string,
+  value: unknown,
+): Promise<RowResult> {
+  if (!Number.isInteger(rowId)) return { ok: false, reason: "Invalid record." };
+
+  const schema = await introspectSchema();
+  const result = await updateCell(schema, tableName, rowId, columnName, value);
+  if (!result.ok) return result;
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function deleteRecord(
+  tableName: string,
+  rowId: number,
+): Promise<RowResult> {
+  if (!Number.isInteger(rowId)) return { ok: false, reason: "Invalid record." };
+
+  const schema = await introspectSchema();
+  const result = await deleteRow(schema, tableName, rowId);
+  if (!result.ok) return result;
+
+  revalidatePath("/");
+  return { ok: true };
 }

@@ -1,7 +1,9 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
 <!-- END:nextjs-agent-rules -->
 
 # crmllm
@@ -13,8 +15,8 @@ LLM proposes a structured schema change, the user reviews it and applies it. The
 panel on the right renders itself from the live database schema: **there are no
 hand-written components per entity**.
 
-The core idea is not "a CRM". It is: *an agent that proposes schema changes
-reliably*. Everything else is scaffolding.
+The core idea is not "a CRM". It is: _an agent that proposes schema changes
+reliably_. Everything else is scaffolding.
 
 ## The two rules that don't bend
 
@@ -66,6 +68,7 @@ The short version:
 ```
 src/db/               connection + internal _meta tables
 src/lib/schema/       reading the live database
+src/lib/rows/         reading + writing the data inside it (not migrations)
 src/lib/migrations/   the engine: tools, model call, SQL generation
 scripts/              dev utilities + the regression suite
 migrations/           generated .sql files, one per applied migration
@@ -76,7 +79,13 @@ Important convention: **user entities live in `public`, internal tables in
 Don't move anything between schemas without updating introspection.
 
 Run `npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/test-migrations.ts`
-after any change to `sql.ts` or `introspect.ts`.
+after any change to `sql.ts` or `introspect.ts`, and `scripts/test-rows.ts` after
+any change to `rows/mutate.ts` or `rows/read.ts`.
+
+One constraint that typecheck will not catch: `src/lib/rows/cells.ts` must not
+import anything that reaches `@/db`. Both views are client components and import
+it to render, so a database import there pulls `pg` into the browser bundle and
+the build fails.
 
 ## Commands
 
@@ -98,12 +107,18 @@ npm run dev
 
 ## v0 scope (three days)
 
-Exactly four operations: create table, add column, rename column, change column
-type. Nothing else.
+Exactly four **schema** operations: create table, add column, rename column,
+change column type. Nothing else.
+
+Editing rows — add, edit, delete a record from the CRM view — is in scope and
+built. It does not widen the four operations: it is data, not schema. No
+proposal, no migration, no model, no `_meta.migrations` row. The tool vocabulary
+is still the security boundary for everything the model can reach, and the model
+cannot reach this.
 
 Explicitly out: authentication, multi-tenant, RLS, permissions, production,
 importing from other CRMs. Don't add them even if they look easy — they add
 complexity without touching the core idea.
 
 v1 (later, if v0 works): undo using the reverses, drop column with explicit
-confirmation, relations between entities, a real CRM seed (contacts, deals, notes).
+confirmation, relations between entities, a real CRM seed (contacts, deals, notes). voice support

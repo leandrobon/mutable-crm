@@ -1,7 +1,7 @@
 import { Chat } from "@/components/chat";
-import { EntityPanel } from "@/components/entity-panel";
+import { Panel } from "@/components/panel";
 import { introspectSchema } from "@/lib/schema/introspect";
-import { fetchAllTableData } from "@/lib/schema/rows";
+import { fetchAllTableData } from "@/lib/rows/read";
 
 // The schema can change on any request, so never serve this from a cache.
 export const dynamic = "force-dynamic";
@@ -24,8 +24,8 @@ export default async function Home() {
         <div className="min-h-0 border-b lg:border-b-0 lg:border-r">
           <Chat />
         </div>
-        <div className="min-h-0 overflow-y-auto bg-muted/30">
-          <EntityPanel tables={tables} />
+        <div className="min-h-0 bg-muted/30">
+          <Panel tables={tables} />
         </div>
       </div>
     </div>
